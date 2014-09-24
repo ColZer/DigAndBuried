@@ -26,6 +26,6 @@ Job是一组rdd的转换以及最后的动作的操作集合，它是Spark里面
 job既然是由一组RDD上转换和动作组成，那么job内部肯定是由一组RDD组成的有向无环图(DAG)，图中每个节点都为一个RDD，RDD之间的连接线为
 转换操作，图有一组输入和输出，如下图所示。  
 ![job to stage1][job2stage]
-[job2stage]:./image/job2stage.jpg
+[job2stage]:../image/job2stage.jpg
 
 
