@@ -11,15 +11,16 @@
 
 本文针对shuffle相关的代码逻辑做一次串读，其中包括shuffle的原理，以及shuffle代码级别的实现。
 
-## Dependency与Stage的关系
+## Job，Stage，Task, Dependency
 
-在Spark中，RDD是操作对象的单位，其他操作可以分为转换(transformation)和动作(actions),只有动作操作才会触发一个spark计算操作。  
+在Spark中，RDD是操作对象的单位，其中操作可以分为转换(transformation)和动作(actions),只有动作操作才会触发一个spark计算操作。  
 以rdd.map操作和rdd.count操作做比较  
 
     def map[U: ClassTag](f: T => U): RDD[U] = new MappedRDD(this, sc.clean(f))
     def count(): Long = sc.runJob(this, Utils.getIteratorSize _).sum   
 
 map操作只是在当前的rdd的基础上创建一个MappedRDD对象，而count操作会调用sc.runJob向spark提交一个job  
-job是Spark里面计算最大最虚的概念，甚至在spark的任务页面中都无法看到job这个单位。每次在一个rdd上做动作操作时，都会触发一个job。  
+Job是一组rdd的转换以及最后的动作的操作集合，它是Spark里面计算最大最虚的概念，甚至在spark的任务页面中都无法看到job这个单位。
+但是不管怎么样，在spark用户的角度，job是我们计算目标的单位，每次在一个rdd上做动作操作时，都会触发一个job。
 
 
