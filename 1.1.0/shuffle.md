@@ -49,10 +49,13 @@ Job是由一组RDD上转换和动作组成，这组RDD之间的转换关系表�
 
 理清楚了Job层面RDD之间的关系，RDD层面分区之间的关系，那么下面讲述一下Stage概念。  
   
-Stage的划分是对一个Job里面一系列RDD转换和动作进行划分，首先job是因动作而产生，因此每个job肯定都有一个ResultStage，否则job就不会启动。  
-其次，如果Job内部RDD之间存在宽依赖，Spark会针对它产生一个中间Stage，即为ShuffleStage，严格来说应该是ShuffleMapStage，这个stage是针对父RDD而产生的，
+Stage的划分是对一个Job里面一系列RDD转换和动作进行划分。  
+
++   首先job是因动作而产生，因此每个job肯定都有一个ResultStage，否则job就不会启动。  
++   其次，如果Job内部RDD之间存在宽依赖，Spark会针对它产生一个中间Stage，即为ShuffleStage，严格来说应该是ShuffleMapStage，这个stage是针对父RDD而产生的，
 相当于在父RDD上做一个父rdd.map().collect()的操作。ShuffleMapStage生成的map输入，对于子RDD，如果检测到所自己所“宽依赖”的stage完成计算，就可以启动一个shuffleFectch，
 从而将父RDD输出的数据拉取过程，进行后续的计算。  
+
 因此一个Job由一个ResultStage和多个ShuffleMapStage组成。
 
 
