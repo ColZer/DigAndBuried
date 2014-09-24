@@ -23,9 +23,15 @@ map操作只是在当前的rdd的基础上创建一个MappedRDD对象，而count
 Job是一组rdd的转换以及最后的动作的操作集合，它是Spark里面计算最大最虚的概念，甚至在spark的任务页面中都无法看到job这个单位。
 但是不管怎么样，在spark用户的角度，job是我们计算目标的单位，每次在一个rdd上做动作操作时，都会触发一个job。  
 
-job既然是由一组RDD上转换和动作组成，那么job内部肯定是由一组RDD组成的有向无环图(DAG)，图中每个节点都为一个RDD，RDD之间的连接线为
-转换操作，图有一组输入和输出，如下图所示。  
-![job to stage1][job2stage]
-[job2stage]:../image/job2stage.jpg
+
+Job既然是由一组RDD上转换和动作组成，那么job内部肯定是由一组RDD组成的有向无环图(DAG)，图中每个节点都为一个RDD，RDD之间的连接线为
+转换操作，图有一组输入和一组输出。  
+但是
+
+如下图所示。  
+![job to stage1][job2stage1]
+[job2stage1]:../image/job2stage1.jpg
+
+如果上图所示，每个
 
 
