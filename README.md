@@ -20,7 +20,7 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-30
-+   坑状态：pending
++   坑状态：doning
 
 # Spark-Block管理
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑，这个坑填好的时候，也许spark也就通了。
