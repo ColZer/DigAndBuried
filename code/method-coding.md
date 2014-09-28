@@ -72,6 +72,20 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
 +   成员内部类里面不能定义static类变量和static函数;但是静态内部类里面可以.
 +   静态内部类不能访问外部类里面的非static成员变量,内部类没有(外部类名称.this)外部类的指针.
 +   成员内部类的对象创建,必须通过(外部类名称.内部类名称 对象变量 = 外部类对象.new 外部类名称.内部类名称),
+(注意:尽管new的方式不一样,但是new出来的两个内部对象的class对象是相等,后面会谈到scala内部类,这点和scala是很不同)
+
+        OuterClass outerClass1 = new OuterClass();
+        OuterClass outerClass2 = new OuterClass();
+        OuterClass.InnerClass innerClass1 = outerClass1.new InnerClass();
+        OuterClass.InnerClass innerClass2 = outerClass2.new InnerClass();
+        //will print "equal"
+        if(innerClass1.getClass() == innerClass2.getClass()) {
+            out.println("equal");
+        }
+        //success class
+        outerClass1.runWithInnerClass(innerClass1);
+        outerClass1.runWithInnerClass(innerClass2);
+        
 +   静态内部类和可以直接通过(外部类名称.内部类名称 对象变量 = new 外部类名称.内部类名称),即静态内部类与外部类的对象之间不存在对应关系.
 +   成员内部类,静态内部类都是定义类里,与传统的成员变量/静态变量相似.还有另外一种作用域里的内部类:局部内部类,即定义在方法里的内部类,
 它和成员内部类的区别是,它除了拥有外部类的变量的可见性以外,还拥有方法内的部分局部变量的可见性.
