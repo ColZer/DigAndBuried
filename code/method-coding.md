@@ -74,6 +74,7 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
 +   成员内部类的对象创建,必须通过(外部类名称.内部类名称 对象变量 = 外部类对象.new 外部类名称.内部类名称),
 (注意:尽管new的方式不一样,但是new出来的两个内部对象的class对象是相等,后面会谈到scala内部类,这点和scala是很不同)
 
+        //JAVA
         OuterClass outerClass1 = new OuterClass();
         OuterClass outerClass2 = new OuterClass();
         OuterClass.InnerClass innerClass1 = outerClass1.new InnerClass();
@@ -85,6 +86,22 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
         //success class
         outerClass1.runWithInnerClass(innerClass1);
         outerClass1.runWithInnerClass(innerClass2);
+        
+        //SCALA
+        val scalaOuterClass1 = new ScalaOuterClass;
+        val scalaOuterClass2 = new ScalaOuterClass;
+        val scalaInnerClass1 = new scalaOuterClass1.ScalaInnerClass;
+        val scalaInnerClass2 = new scalaOuterClass2.ScalaInnerClass;
+        //will print "no equal"
+        if(scalaInnerClass1 != scalaInnerClass2) {
+            println("no equal");
+        }
+        scalaOuterClass1.runWithInnerClass(scalaInnerClass1);
+        //
+        //error: type mismatch;
+        //[INFO]  found   : scalaOuterClass2.ScalaInnerClass
+        //[INFO]  required: scalaOuterClass1.ScalaInnerClass
+        scalaOuterClass1.runWithInnerClass(scalaInnerClass2);
         
 +   静态内部类和可以直接通过(外部类名称.内部类名称 对象变量 = new 外部类名称.内部类名称),即静态内部类与外部类的对象之间不存在对应关系.
 +   成员内部类,静态内部类都是定义类里,与传统的成员变量/静态变量相似.还有另外一种作用域里的内部类:局部内部类,即定义在方法里的内部类,
