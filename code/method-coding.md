@@ -72,18 +72,14 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
 +   成员内部类里面不能定义static类变量和static函数;但是静态内部类里面可以.
 +   静态内部类不能访问外部类里面的非static成员变量,内部类没有(外部类名称.this)外部类的指针.
 +   成员内部类的对象创建,必须通过(外部类名称.内部类名称 对象变量 = 外部类对象.new 外部类名称.内部类名称),
-(注意:尽管new的方式不一样,但是new出来的两个内部对象的class对象是相等,后面会谈到scala内部类,这点和scala是很不同)
+(注意:尽管new的方式不一样,但是new出来的两个内部对象的类型是相等,后面会谈到scala内部类,这点和scala是很不同,下面的实例提前做一个比较)
 
         //JAVA
         OuterClass outerClass1 = new OuterClass();
         OuterClass outerClass2 = new OuterClass();
         OuterClass.InnerClass innerClass1 = outerClass1.new InnerClass();
         OuterClass.InnerClass innerClass2 = outerClass2.new InnerClass();
-        //will print "equal"
-        if(innerClass1.getClass() == innerClass2.getClass()) {
-            out.println("equal");
-        }
-        //success class
+        //two will be success
         outerClass1.runWithInnerClass(innerClass1);
         outerClass1.runWithInnerClass(innerClass2);
         
@@ -92,10 +88,7 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
         val scalaOuterClass2 = new ScalaOuterClass;
         val scalaInnerClass1 = new scalaOuterClass1.ScalaInnerClass;
         val scalaInnerClass2 = new scalaOuterClass2.ScalaInnerClass;
-        //will print "no equal"
-        if(scalaInnerClass1 != scalaInnerClass2) {
-            println("no equal");
-        }
+        
         scalaOuterClass1.runWithInnerClass(scalaInnerClass1);
         //
         //error: type mismatch;
@@ -112,8 +105,34 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
 +   总结,从上面来看,内部类拥有外部类成员变量的可见性,但是内部类(局部/匿名)不能读取定义域非final局部变量.
 
 上面简单的对java内部类进行简单总结,发现它和闭包有几个区别
+
 +   编译出来的class不一样.
 +   局部/匿名内部类与也是局部定义的闭包对局部变量的可见性不同.
+
+
+在对java的内部类与scala的闭包的区别进行分析之前,先来看一下scala对内部类的支持.
+
++   scala也有成员内部类,静态内部类,局部内部类以及匿名类;其中静态内部类是定义在Object的类;
++   scala中对内部类的支持与java大体一直,连编译出来的class名称也与java完全一样.不一样的三点是:
+-   上述的内部类的类型机制不一样;局部内部类对局部变量的可见性不一样;引入路径依赖类型和类型投影的概念
++   重要:scala局部内部类对局部变量的可见性没有final/val变量的要求,比如下面的例子:
+    def runWithInnerClass(inner:ScalaInnerClass): Unit = {
+        var test= 2;
+        class functionClass {
+            def doSome1(): Unit = {
+                inner.doSome();//可以读取函数的参数
+                println(test)//可以读取函数局部变量
+                test=3;//可以修改函数的局部变量
+                println(test)//
+                print(ScalaOuterClass.this.test3);//可以读取外部类的成员变量
+            }
+        };
+    }
++   首先针对"外部类名称.内部类名称"这样的格式的类型,起了一个专业的名称为:路径依赖类型；比如 A.this.B就是一个路径依赖类型,
+其中A.this会因为this的实例的不同而不同，比如 a1 和 a2 就是两个不同的路径，所以a1.B 与 a2.B也是不同的类型
++   路径依赖类型a1.B与a2.B是两个不同类型,但是她们都有一个超类型A.B,那么如果一个方法希望接受所有A.B,那怎么写?类型投影，用 A#B的形式表示。
+那么def foo(b: A#B)就可以接受a1.B和a2.B.
+
 
 
 
