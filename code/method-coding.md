@@ -109,26 +109,27 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
 +   编译出来的class不一样.
 +   局部/匿名内部类与也是局部定义的闭包对局部变量的可见性不同.
 
-
 在对java的内部类与scala的闭包的区别进行分析之前,先来看一下scala对内部类的支持.
 
 +   scala也有成员内部类,静态内部类,局部内部类以及匿名类;其中静态内部类是定义在Object的类;
 +   scala中对内部类的支持与java大体一直,连编译出来的class名称也与java完全一样.不一样的三点是:
--   上述的内部类的类型机制不一样;局部内部类对局部变量的可见性不一样;引入路径依赖类型和类型投影的概念
+上述的内部类的类型机制不一样;局部内部类对局部变量的可见性不一样;引入路径依赖类型和类型投影的概念
 +   重要:scala局部内部类对局部变量的可见性没有final/val变量的要求,比如下面的例子:
-    def runWithInnerClass(inner:ScalaInnerClass): Unit = {
-        var test= 2;
-        class functionClass {
-            def doSome1(): Unit = {
-                inner.doSome();//可以读取函数的参数
-                println(test)//可以读取函数局部变量
-                test=3;//可以修改函数的局部变量
-                println(test)//
-                print(ScalaOuterClass.this.test3);//可以读取外部类的成员变量
-            }
-        };
-    }
-+   首先针对"外部类名称.内部类名称"这样的格式的类型,起了一个专业的名称为:路径依赖类型；比如 A.this.B就是一个路径依赖类型,
+
+        def runWithInnerClass(inner:ScalaInnerClass): Unit = {
+            var test= 2;
+            class functionClass {
+                def doSome1(): Unit = {
+                    inner.doSome();//可以读取函数的参数
+                    println(test)//可以读取函数局部变量
+                    test=3;//可以修改函数的局部变量
+                    println(test)//
+                    print(ScalaOuterClass.this.test3);//可以读取外部类的成员变量
+                }
+            };
+        }
+    
++   针对"外部类名称.内部类名称"这样的格式的类型,引入"路径依赖类型"；比如 A.this.B就是一个路径依赖类型,
 其中A.this会因为this的实例的不同而不同，比如 a1 和 a2 就是两个不同的路径，所以a1.B 与 a2.B也是不同的类型
 +   路径依赖类型a1.B与a2.B是两个不同类型,但是她们都有一个超类型A.B,那么如果一个方法希望接受所有A.B,那怎么写?类型投影，用 A#B的形式表示。
 那么def foo(b: A#B)就可以接受a1.B和a2.B.
