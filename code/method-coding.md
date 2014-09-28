@@ -47,7 +47,7 @@
 
 ## java中"闭包"仿真
 
-java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没有支持,但是可以通过java(匿名)内部类来模拟实现,参考spark的rdd map函数的java-api
+java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没有支持,需要通过java(匿名)内部类来模拟实现,参考spark的rdd map函数的java-api
 
     <R> JavaRDD<R> map(Function<T,R> f)
     public interface Function<T1,R>
