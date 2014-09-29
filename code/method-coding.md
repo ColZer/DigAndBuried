@@ -146,6 +146,73 @@ java8版本引入Lambda表达式和闭包的支持,但是java8之前版本都没
 
 通过上面限制java就可以无bug的实现局部内部类,虽然有限制,但是还是够用,所以一直以来,局部内部类/匿名内部类广泛应用在回调操作上.
 
+那么为什么scala的局部内部类可以访问函数的var变量呢?如下面的实例:
+
+    //scala
+    def run(): Unit ={
+        var data=1;
+        class InnerClass{
+            def runInnerClass(): Unit = {
+                println(data);
+                data = 2;
+            }
+        }
+        (new InnerClass()).runInnerClass();
+        print(data);
+    }
+    
+    //截取javap中针对内部类构造函数和runnInnerClass
+    public void runInnerClass();
+        flags: ACC_PUBLIC
+        Code:
+          stack=2, locals=1, args_size=1
+             0: getstatic     #21                 // Field scala/Predef$.MODULE$:Lscala/Predef$;
+             3: aload_0       
+             4: getfield      #23                 // Field data$1:Lscala/runtime/IntRef;
+             7: getfield      #29                 // Field scala/runtime/IntRef.elem:I
+            10: invokestatic  #35                 // Method scala/runtime/BoxesRunTime.boxToInteger:(I)Ljava/lang/Integer;
+            13: invokevirtual #39                 // Method scala/Predef$.println:(Ljava/lang/Object;)V
+            16: return        
+    public com.baidu.bcs.dataplatform.ScalaOuterClass$InnerClass$1(com.baidu.bcs.dataplatform.ScalaOuterClass, scala.runtime.IntRef);
+    
+    //截取javap中关于外部类run函数
+    public void run();
+        flags: ACC_PUBLIC
+        Code:
+          stack=4, locals=2, args_size=1
+             0: new           #22                 // class scala/runtime/IntRef
+             3: dup           
+             4: iconst_1      
+             5: invokespecial #26                 // Method scala/runtime/IntRef."<init>":(I)V
+             8: astore_1      
+             9: new           #28                 // class com/baidu/bcs/dataplatform/ScalaOuterClass$InnerClass$1
+            12: dup           
+            13: aload_0       
+            14: aload_1       
+            15: invokespecial #31                 // Method com/baidu/bcs/dataplatform/ScalaOuterClass$InnerClass$1."<init>":(Lcom/baidu/bcs/dataplatform/ScalaOuterClass;Lscala/runtime/IntRef;)V
+            18: invokevirtual #34                 // Method com/baidu/bcs/dataplatform/ScalaOuterClass$InnerClass$1.runInnerClass:()V
+            21: getstatic     #39                 // Field scala/Predef$.MODULE$:Lscala/Predef$;
+            24: aload_1       
+            25: getfield      #43                 // Field scala/runtime/IntRef.elem:I
+            28: invokestatic  #49                 // Method scala/runtime/BoxesRunTime.boxToInteger:(I)Ljava/lang/Integer;
+            31: invokevirtual #53                 // Method scala/Predef$.print:(Ljava/lang/Object;)V
+            34: return        
+          LocalVariableTable:
+            Start  Length  Slot  Name   Signature
+                   0      35     0  this   Lcom/baidu/bcs/dataplatform/ScalaOuterClass;
+                   9      25     1  data   Lscala/runtime/IntRef; 
+    
+通过javap我们可以看到,外部函数的定义局部变量data,在run函数中被包装成成一个scala/runtime/IntRef对象,并且在内部类InnerClass的构造函数中,将其传入到构造函数中,
+因为这个对象是scala自己生成的,所以可以肯定的被包装这个对象是不会改变引用,相当于java final对象,然后函数和内部类之间就可以进行操作了.
+一句话,把本身属于栈的基本类型变量,转换为引用类型,从而实现scala内部类可以读取外部定义函数的局部变量,并且不受final的限制.
+那如果不是基本类型而是引用类型呢?很简单,封装为scala/runtime/ObjectRef.
+
+哈哈哈!!!!终于理清楚java内部类和scala了;虽然这篇问题是要讲闭包,但是我相信很多人和我一样,对闭包与内部类之间的差别很模糊!!!!
+
+## 闭包清理的实现
+ 
+    
+  
 
 
 临时备注:
