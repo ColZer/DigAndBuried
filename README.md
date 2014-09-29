@@ -12,12 +12,12 @@
 +   期望完成日期：2014-10-7
 +   坑状态：doing
 
-# [Spark闭包清理的理解](./code/method-coding.md)
+# [Spark闭包清理的理解](./code/Lscala/function-closure-cleaner.md)
 scala是一门函数编程语言，当然函数，方法，闭包这些概念也是他们的核心，在阅读spark的代码过程，也充斥着大量关于scala函数相关的特性引用，比如：
 
     def map[U: ClassTag](f: T => U): RDD[U] = new MappedRDD(this, sc.clean(f))
 map函数的应用，每次我传入一个f都会做一次sc.clean的操作，那它到底做了什么事情呢？其实这些都和scala闭包有关系。  
-同时java8之前版本,java不对闭包的支持,那么java是通过内部类来实现,那么内部类与闭包到底有那些关系和区别呢?
+同时java8之前版本,java不对闭包的支持,那么java是通过内部类来实现,那么内部类与闭包到底有那些关系和区别呢?同时会深入剖析java的内部类与scala的内部类的区别
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-30
