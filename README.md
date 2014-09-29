@@ -12,7 +12,7 @@
 +   期望完成日期：2014-10-7
 +   坑状态：doing
 
-# [Spark闭包清理的理解](./code/Lscala/function-closure-cleaner.md)
+# [Spark闭包清理的理解](./code/function-closure-cleaner.md)
 scala是一门函数编程语言，当然函数，方法，闭包这些概念也是他们的核心，在阅读spark的代码过程，也充斥着大量关于scala函数相关的特性引用，比如：
 
     def map[U: ClassTag](f: T => U): RDD[U] = new MappedRDD(this, sc.clean(f))
