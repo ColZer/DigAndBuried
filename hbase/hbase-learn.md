@@ -56,7 +56,7 @@ It splits the regions when the total data size for one of the stores (correspond
 >This grouping of records is sometimes referred to as “Entity Groups” or “Row Groups”. 
 >This is a key feature when considering use of the “local transactions” (alternative link) feature in your application design.   
 
-    auto-splitting过程中不会直接进行文件的分割,而是创造两个ref来指向parent_region,在两个子region在后面需要进行compactions,才对原始数据进行rewrite.  
+    auto-splitting过程中不会直接进行文件的分割,而是创造两个ref来指向parent_region,在两个子region在后面需要进行compactions,才对原始数据进行rewrite. 
     一个region在将ref进行rewrite之前,是不允许再次进行split.  
     所以auto-splitting的耗时是可以接受的.
     
