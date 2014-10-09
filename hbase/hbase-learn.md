@@ -3,8 +3,13 @@ HBase 研究总结
 
 hbase需要研究的知识备忘
 
-+   [MSLAB:A memstore-local allocation buffer](http://www.taobaotest.com/blogs/2310) 用来解决Memstore在flush到hfile以后
-对内存造成碎片的问题.
++   [MSLAB:A memstore-local allocation buffer](http://www.taobaotest.com/blogs/2310)   
+Memstore功能是保存并索引所有临时的cell,每个cell的在物理内存层面上占用的内存是不连续的,此时如果对menstore进行flush操作,势必就会在内存中
+清除这部分内存,后果就是造成内存碎片,Lab的功能就是预分配一块内存,将所有需要被menstore索引的 cell复制到这块内存中进行管理,从而可以实现对flush以后,
+减小内存碎片.  
+上述文章对MSLAB进行测试,从测试结果来看,这个内存碎片优化的效果不是特别明显.但是重要,LAB的内存是预分配的,默认2m,如果单RS上的region太多,
+会造成内存占用过大的问题.
+    
 +   [单RS上的region个数对性能的影响](http://hbase.apache.org/book/regions.arch.html) RS对region进行管理,但是单个RS的处理能力还是有限,
 过多的region,会带来性能的问题.
 +   [HBase HMaster Architecture](http://blog.zahoor.in/2012/08/hbase-hmaster-architecture/) HMaster在设计上还是比较轻量级别,
