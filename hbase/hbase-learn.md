@@ -53,11 +53,12 @@ It splits the regions when the total data size for one of the stores (correspond
 >and this split policy ensures that the regions are not split in the middle of a group of rows having the same prefix. If you have set prefixes for your keys, 
 >then you can use this split policy to ensure that rows having the same rowkey prefix always end up in the same region. 
 >This grouping of records is sometimes referred to as “Entity Groups” or “Row Groups”. 
->This is a key feature when considering use of the “local transactions” (alternative link) feature in your application design.
+>This is a key feature when considering use of the “local transactions” (alternative link) feature in your application design.   
 
-我们可以同设置ConstantSizeRegionSplitPolicy和hbase.hregion.max.filesize足够大来关闭auto-splitting  
-使用建议:一般情况下不需要预分配太多splits,让auto-splitting根据每个分区的大小来自动分配可能达到更好的平衡
-forced-splitting:在shell里面可以使用split命令对table,region进行线上强制split.
+    我们可以同设置ConstantSizeRegionSplitPolicy和hbase.hregion.max.filesize足够大来关闭auto-splitting  
+    使用建议:一般情况下不需要预分配太多splits,让auto-splitting根据每个分区的大小来自动分配可能达到更好的平衡  
+
+    forced-splitting:在shell里面可以使用split命令对table,region进行线上强制split.
 
 +   [OpenTSDB的Scheme设计](http://opentsdb.net/docs/build/html/user_guide/backends/hbase.html) openTSDB在处理时间序列数据上有很大的优势,
 可以进行一次仔细研究.
