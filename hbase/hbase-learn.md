@@ -20,8 +20,47 @@ RS以region为管理对象,每个region有自身store管理,在资源上,每个r
     3.  RS的重启过程需要进行region的迁移,region数目也确定了迁移的效率.           
 总之,RS的能力还是有限,根据官网的建议,100是最好的配置.
 
-+   [Hbase scheme的设计总结](http://hbase.apache.org/book/schema.html),[2](https://communities.intel.com/community/itpeernetwork/datastack/blog/2013/11/10/discussion-on-designing-hbase-tables)
++   [Hbase scheme的设计总结](http://hbase.apache.org/book/schema.html),[资料二](https://communities.intel.com/community/itpeernetwork/datastack/blog/2013/11/10/discussion-on-designing-hbase-tables)
 Hbase的性能严重依赖Scheme的设计,从rowkey的设计,TTL/版本的个数, HFile的blockSize的大小,BlockCache的选择.
+
++   [region split](http://zh.hortonworks.com/blog/apache-hbase-region-splitting-and-merging/)  
+HBase的table的split可以通过pre-splitting,auto-splitting,forced-splitting三个过程来实现.  
+
+pre-splitting为预先对region进行切割,可以在create table时指定splits或通过org.apache.hadoop.hbase.util.RegionSplitter工具进行分区
+
+        //自动创建test_table表以及'f1'的cf,并使用 SplitAlgorithm. HexStringSplit算法进行pre-splitting,或者使用SplitAlgorithm.UniformSplit算法 
+        hbase org.apache.hadoop.hbase.util.RegionSplitter test_table HexStringSplit -c 10 -f f1
+        
+        //使用create 的SPLITS/SPLITSFILE属性进行设置
+        create 'test_table', 'f1', SPLITS=['a', 'b', 'c']
+        echo -e  "a\nb\nc" /tmp/splits
+        create 'test_table', 'f1', SPLITSFILE=/tmp/splits'
+     
+auto-splitting是一个不受master参与的自动切割的过程."什么时候自动分区"以及"分区选择的中间点"由参数"hbase.regionserver.region.split.policy所配置算法来确定,
+有ConstantSizeRegionSplitPolicy,IncreasingToUpperBoundRegionSplitPolicy,KeyPrefixRegionSplitPolicy等算法
+具体算法参照原文描述:
+>ConstantSizeRegionSplitPolicy is the default and only split policy for HBase versions before 0.94. 
+It splits the regions when the total data size for one of the stores (corresponding to a column-family) in the region gets bigger than 
+>configured “hbase.hregion.max.filesize”, which has a default value of 10GB. 
+>
+>IncreasingToUpperBoundRegionSplitPolicy is the default split policy for HBase 0.94, 
+>which does more aggressive splitting based on the number of regions hosted in the same region server.
+>The split policy uses the max store file size based on Min (R^2 * “hbase.hregion.memstore.flush.size”, “hbase.hregion.max.filesize”), 
+>where R is the number of regions of the same table hosted on the same regionserver. 
+>So for example, with the default memstore flush size of 128MB and the default max store size of 10GB, the first region on the region server will be split just after the first flush at 128MB. As number of regions hosted in the region server increases, it will use increasing split sizes: 512MB, 1152MB, 2GB, 3.2GB, 4.6GB, 6.2GB, etc. After reaching 9 regions, the split size will go beyond the configured “hbase.hregion.max.filesize”, at which point, 10GB split size will be used from then on. For both of these algorithms,
+>regardless of when splitting occurs, the split point used is the rowkey that corresponds to the mid point in the “block index” for the largest store file in the largest store.
+>
+>KeyPrefixRegionSplitPolicy is a curious addition to the HBase arsenal. You can configure the length of the prefix for your row keys for grouping them, 
+>and this split policy ensures that the regions are not split in the middle of a group of rows having the same prefix. If you have set prefixes for your keys, 
+>then you can use this split policy to ensure that rows having the same rowkey prefix always end up in the same region. 
+>This grouping of records is sometimes referred to as “Entity Groups” or “Row Groups”. 
+>This is a key feature when considering use of the “local transactions” (alternative link) feature in your application design.
+
+我们可以同设置ConstantSizeRegionSplitPolicy和hbase.hregion.max.filesize足够大来关闭auto-splitting  
+使用建议:一般情况下不需要预分配太多splits,让auto-splitting根据每个分区的大小来自动分配可能达到更好的平衡
+
+forced-splitting
+在shell里面可以使用split命令对table,region进行线上强制split.
 
 +   [OpenTSDB的Scheme设计](http://opentsdb.net/docs/build/html/user_guide/backends/hbase.html) openTSDB在处理时间序列数据上有很大的优势,
 可以进行一次仔细研究.
