@@ -23,7 +23,7 @@ RS以region为管理对象,每个region有自身store管理,在资源上,每个r
 +   [Hbase scheme的设计总结](http://hbase.apache.org/book/schema.html),[资料二](https://communities.intel.com/community/itpeernetwork/datastack/blog/2013/11/10/discussion-on-designing-hbase-tables)
 Hbase的性能严重依赖Scheme的设计,从rowkey的设计,TTL/版本的个数, HFile的blockSize的大小,BlockCache的选择.
 
-+   [region split](http://zh.hortonworks.com/blog/apache-hbase-region-splitting-and-merging/)  
++   [region 预先Split/自动Split/手动Split的学习](http://zh.hortonworks.com/blog/apache-hbase-region-splitting-and-merging/)  
 
 HBase的table的split可以通过pre-splitting,auto-splitting,forced-splitting三个过程来实现.    
 pre-splitting为预先对region进行切割,可以在create table时指定splits或通过org.apache.hadoop.hbase.util.RegionSplitter工具进行分区
