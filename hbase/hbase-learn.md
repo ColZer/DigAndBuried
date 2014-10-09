@@ -35,8 +35,7 @@ pre-splitting为预先对region进行切割,可以在create table时指定splits
         create 'test_table', 'f1', SPLITS=['a', 'b', 'c']
         echo -e  "a\nb\nc" /tmp/splits
         create 'test_table', 'f1', SPLITSFILE=/tmp/splits'
-     
-auto-splitting是一个不受master参与的自动切割的过程."什么时候自动分区"以及"分区选择的中间点"由参数"hbase.regionserver.region.split.policy所配置算法来确定,
+     auto-splitting是一个不受master参与的自动切割的过程."什么时候自动分区"以及"分区选择的中间点"由参数"hbase.regionserver.region.split.policy所配置算法来确定,
 有ConstantSizeRegionSplitPolicy,IncreasingToUpperBoundRegionSplitPolicy,KeyPrefixRegionSplitPolicy等算法
 具体算法参照原文描述:
 >ConstantSizeRegionSplitPolicy is the default and only split policy for HBase versions before 0.94. 
@@ -58,7 +57,6 @@ It splits the regions when the total data size for one of the stores (correspond
 
 我们可以同设置ConstantSizeRegionSplitPolicy和hbase.hregion.max.filesize足够大来关闭auto-splitting  
 使用建议:一般情况下不需要预分配太多splits,让auto-splitting根据每个分区的大小来自动分配可能达到更好的平衡
-
 forced-splitting:在shell里面可以使用split命令对table,region进行线上强制split.
 
 +   [OpenTSDB的Scheme设计](http://opentsdb.net/docs/build/html/user_guide/backends/hbase.html) openTSDB在处理时间序列数据上有很大的优势,
