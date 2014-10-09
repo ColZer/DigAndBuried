@@ -57,7 +57,8 @@ It splits the regions when the total data size for one of the stores (correspond
 >This is a key feature when considering use of the “local transactions” (alternative link) feature in your application design.   
 
     auto-splitting过程中不会直接进行文件的分割,而是创造两个ref来指向parent_region,在两个子region在后面需要进行compactions,才对原始数据进行rewrite.  
-    所以auto-splitting的耗时是可以接受的.一个region在将ref进行rewrite之前,是不允许再次进行split.
+    一个region在将ref进行rewrite之前,是不允许再次进行split.  
+    所以auto-splitting的耗时是可以接受的.
     
     如果实在不接受auto-splitting所带来的性能问题,可以设置ConstantSizeRegionSplitPolicy和hbase.hregion.max.filesize足够大来关闭auto-splitting  
     使用建议:一般情况下不需要预分配太多splits,让auto-splitting根据每个分区的大小来自动分配可能达到更好的平衡  
