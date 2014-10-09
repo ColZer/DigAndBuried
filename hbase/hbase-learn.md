@@ -24,11 +24,12 @@ RS以region为管理对象,每个region有自身store管理,在资源上,每个r
 Hbase的性能严重依赖Scheme的设计,从rowkey的设计,TTL/版本的个数, HFile的blockSize的大小,BlockCache的选择.
 
 +   [region split](http://zh.hortonworks.com/blog/apache-hbase-region-splitting-and-merging/)  
-HBase的table的split可以通过pre-splitting,auto-splitting,forced-splitting三个过程来实现.  
 
+HBase的table的split可以通过pre-splitting,auto-splitting,forced-splitting三个过程来实现.    
 pre-splitting为预先对region进行切割,可以在create table时指定splits或通过org.apache.hadoop.hbase.util.RegionSplitter工具进行分区
 
-        //自动创建test_table表以及'f1'的cf,并使用 SplitAlgorithm. HexStringSplit算法进行pre-splitting,或者使用SplitAlgorithm.UniformSplit算法 
+        //自创建cf=f1的test_table表,并使用 SplitAlgorithm. HexStringSplit算法进行pre-splitting,或UniformSplit算法 
+        // -c 指定预先分区分区个数
         hbase org.apache.hadoop.hbase.util.RegionSplitter test_table HexStringSplit -c 10 -f f1
         
         //使用create 的SPLITS/SPLITSFILE属性进行设置
@@ -59,8 +60,7 @@ It splits the regions when the total data size for one of the stores (correspond
 我们可以同设置ConstantSizeRegionSplitPolicy和hbase.hregion.max.filesize足够大来关闭auto-splitting  
 使用建议:一般情况下不需要预分配太多splits,让auto-splitting根据每个分区的大小来自动分配可能达到更好的平衡
 
-forced-splitting
-在shell里面可以使用split命令对table,region进行线上强制split.
+forced-splitting:在shell里面可以使用split命令对table,region进行线上强制split.
 
 +   [OpenTSDB的Scheme设计](http://opentsdb.net/docs/build/html/user_guide/backends/hbase.html) openTSDB在处理时间序列数据上有很大的优势,
 可以进行一次仔细研究.
