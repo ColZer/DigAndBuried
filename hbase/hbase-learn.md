@@ -1,5 +1,6 @@
 HBase 相关主题总结
 =====
+
 ##   [MSLAB:A memstore-local allocation buffer](http://www.taobaotest.com/blogs/2310)   
 Memstore功能是保存并索引所有临时的cell,每个cell的在物理内存层面上占用的内存是不连续的,此时如果对menstore进行flush操作,势必就会在内存中
 清除这部分内存,后果就是造成内存碎片,Lab的功能就是预分配一块内存,将所有需要被menstore索引的 cell复制到这块内存中进行管理,从而可以实现对flush以后,
