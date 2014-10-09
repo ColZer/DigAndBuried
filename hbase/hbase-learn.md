@@ -27,7 +27,8 @@ Hbase的性能严重依赖Scheme的设计,从rowkey的设计,TTL/版本的个数
 HBase的table的split可以通过pre-splitting,auto-splitting,forced-splitting三个过程来实现.    
 pre-splitting为预先对region进行切割,可以在create table时指定splits或通过org.apache.hadoop.hbase.util.RegionSplitter工具进行分区
 
-        //自创建cf=f1的test_table表,并使用 SplitAlgorithm. HexStringSplit算法进行pre-splitting,或UniformSplit算法 
+        //自创建cf=f1的test_table表,并使用 SplitAlgorithm. HexStringSplit算法进行pre-splitting,
+        //或UniformSplit算法 
         // -c 指定预先分区分区个数
         hbase org.apache.hadoop.hbase.util.RegionSplitter test_table HexStringSplit -c 10 -f f1
         
