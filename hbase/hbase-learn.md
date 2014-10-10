@@ -69,7 +69,42 @@ auto-splitting过程中不会直接进行文件的分割,而是创造两个ref�
 forced-splitting:在shell里面可以使用split命令对table,region进行线上强制split.
 
 ##    [OpenTSDB的Scheme设计](http://opentsdb.net/docs/build/html/user_guide/backends/hbase.html)   
-openTSDB在处理时间序列数据上有很大的优势,可以进行一次仔细研究.
+OpenTSDB基于HBase实现对metric数据进行存储和查询.在详细了解实现原理之前先来看看什么是metric数据.
+
+对metric的认识可以有两个视角:
+
++   视角1:站在metric统计项的角度来看,metric数据即为一个特定统计项在时间流中每个时间点对应的统计值组成的序列集合.  
+首先每个统计项由metricValue表示一个时间点的统计值.其次由于统计项需要针对不同的实体/属性进行区分,每个统计项含有一个metricTag属性,它是一个KV集,
+表示当前统计项的属性集,
+比如针对metric=free-memory的统计项,那么metrixTag=[{'node':'bj'},{'rack':'01'},{'host':'bj-1'}].代表统计的bj节点下01机架上的bj-1机器的free-memory
+如果修改host=bj-2,那么这两个统计项目就是针对不同的实体进行统计.
++   视角2:站在统计实体的角度来看.比如上述的"bj节点下01机架上的bj-1机器"就是一个统计实体,那么在一个时间点下,该实体上所有的统计项目和统计值就组成一个
+metric集合,比如上述的实体对应的统计值就为metricValue=[{"cpu idle":20},{"free-memory":40}]
+
+OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+timestamp和metricValue组成metric统计项目和统计值,在一个时间序列下,就组成统计值序列TS
+
+总结OpenTSDB的HBase的scheme设计:
+
++   RowKey的设计亮点:
+    -    由metricName+timestamp+metricTag 次序组成的key:<metric_uid><timestamp><tagk1><tagv1><tagkN><tagvN>,
+    将timestamp放到metricTag前面利于针对metricTag的不同进行对比
+    -   timestamp存储为小时级别的时间戳,将小时级别以下时间的统计值作为CF的一个Column Qualifiers进行表示,这样有两个好处:一是减少记录行数,二十提高查询吞吐量,
+    针对metric类型的统计数据,很少会按分钟级别单条去获取,而是一次按照小时级别获取回来进行绘制统计图.
+    -   tag值kv对按照key的字符序进行排列,从而可以通过设计key值来提高特定tag的优先级,从而实现针对特定tag进行查询的优化.
++  Data Columns的设计亮点:
+    -   单CF的设计,受HBase的实现原理,单CF是最优化的设计.
+    >由于HBASE的FLUSHING和压缩是基于REGION的,当一个列族所存储的数据达到FLUSHING阀值时该表的所有列族将同时进行FLASHING操作
+    >这将带来不必要的Ｉ／Ｏ开销。同时还要考虑到同意和一个表中不同列族所存储的记录数量的差别，即列族的势。
+    >当列族数量差别过大将会使包含记录数量较少的列族的数据分散在多个Region之上，而Region可能是分布是不同的RegionServer上。
+    >这样当进行查询等操作系统的效率会受到一定影响。
+    -  针对秒级别和毫秒级别的统计项,qualifiers分为2字节和4字节两种类型,其中2字节就划分12位来存储时间便宜(最大表示4095s),
+    4字节就使用22字节(最大表示4194303毫秒) ,同时如果是4字节,开头4位用于hex存储,22位存储毫秒偏移,2位保留.  
+    此时针对2字节和4字节两种类型都保留最后的4位来存储columns值的类型信息.
+    该4位中,第一位为0/1来表示值为int/float,后面三位分别取值为000/010/011/100分别表示值的大小为1/2/4/8字节.
+    -   value的存储严格按照1/2/4/8字节大小进行存储,从qualifiers中可以获取值的大小,从而可以最小化存储value.
+    
+    
+
 
 ##   [Coprocessor的设计](https://blogs.apache.org/hbase/entry/coprocessor_introduction)   
 协处理器在RS充当了很重要的角色,也是二级索引实现的一个主要途径
