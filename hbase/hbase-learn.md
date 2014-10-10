@@ -91,6 +91,7 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
     -   timestamp存储为小时级别的时间戳,将小时级别以下时间的统计值作为CF的一个Column Qualifiers进行表示,这样有两个好处:一是减少记录行数,二十提高查询吞吐量,
     针对metric类型的统计数据,很少会按分钟级别单条去获取,而是一次按照小时级别获取回来进行绘制统计图.
     -   tag值kv对按照key的字符序进行排列,从而可以通过设计key值来提高特定tag的优先级,从而实现针对特定tag进行查询的优化.
+    
 +  Data Columns的设计亮点:
     -   单CF的设计,受HBase的实现原理,单CF是最优化的设计.
     
@@ -105,12 +106,14 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
    -     对于2字节和4字节两种类型都保留最后的4位用于存储columns值的类型(type)信息.
     该4位中,第一位为0/1来表示值为int/float,后面三位分别取值为000/010/011/100分别表示值的大小为1/2/4/8字节.
     -   value的存储严格按照1/2/4/8字节大小进行存储,从qualifiers中可以获取值的大小,从而可以最小化存储value.
-+   上述的qualifiers和value都是针对int/float类型进行描述,TSDB还支持存储object类型.
+    
++   上述的qualifiers和value都是针对int/float类型进行描述,TSDB还支持存储object类型.  
     -   上述的qualifiers为2/4字节,针对object类型,qualifiers使用3/5字节进行存储,第1字节为01,后面2/4字节直接存储秒和毫秒级别的偏移量.
     不存储type信息,那么存储时间偏移量的2/4字节高位肯定是0,这样好处:010开头的qualifiers在进行查询时候肯定是排在行首.
     -   object value是按照UTF-8编码的JSON对象
     这种类型可以用来存储聚合信息,比如t:01012={sum:100,avg:20,min:10,max:25}存储10分钟的聚合值.
-+   value聚合的设计亮点:  
+    
++   value聚合的设计亮点:     
     在写入TSDB时候,每个偏移量是作为一个单独的qualifiers进行存储,这样方便写入,但是不适合查询,因为查询会针对每个qualifiers作为一行返回.    
     因此TSDB针对数据进行一次聚合(Compactions,和hbase内部的Compactions不是同一个意思).    
     TSDB合并很简单,qualifiers大小是固定的,value的大小可以从qualifiers中获取,因此可以直接连接起来就可以.
