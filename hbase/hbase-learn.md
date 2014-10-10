@@ -85,14 +85,14 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
 
 总结OpenTSDB的HBase的scheme设计:
 
-+   RowKey的设计亮点:
++   DataTable/RowKey的设计亮点:
     -    由metricName+timestamp+metricTag 次序组成的key:<metric_uid><timestamp><tagk1><tagv1><tagkN><tagvN>,
     将timestamp放到metricTag前面利于针对metricTag的不同进行对比
     -   timestamp存储为小时级别的时间戳,将小时级别以下时间的统计值作为CF的一个Column Qualifiers进行表示,这样有两个好处:一是减少记录行数,二十提高查询吞吐量,
     针对metric类型的统计数据,很少会按分钟级别单条去获取,而是一次按照小时级别获取回来进行绘制统计图.
     -   tag值kv对按照key的字符序进行排列,从而可以通过设计key值来提高特定tag的优先级,从而实现针对特定tag进行查询的优化.
     
-+  Data Columns的设计亮点:
++   DataTable/Columns的设计亮点:
     -   单CF的设计,受HBase的实现原理,单CF是最优化的设计.
     
     >由于HBASE的FLUSHING和压缩是基于REGION的,当一个列族所存储的数据达到FLUSHING阀值时该表的所有列族将同时进行FLASHING操作
@@ -113,14 +113,20 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
     -   object value是按照UTF-8编码的JSON对象
     这种类型可以用来存储聚合信息,比如t:01012={sum:100,avg:20,min:10,max:25}存储10分钟的聚合值.
     
-+   value聚合的设计亮点:     
-    在写入TSDB时候,每个偏移量是作为一个单独的qualifiers进行存储,这样方便写入,但是不适合查询,因为查询会针对每个qualifiers作为一行返回.    
++    DataTable的qualifiers/value聚合的设计亮点:     
+    -   在写入TSDB时候,每个偏移量是作为一个单独的qualifiers进行存储,这样方便写入,但是不适合查询,因为查询会针对每个qualifiers作为一行返回.    
     因此TSDB针对数据进行一次聚合(Compactions,和hbase内部的Compactions不是同一个意思).    
-    TSDB合并很简单,qualifiers大小是固定的,value的大小可以从qualifiers中获取,因此可以直接连接起来就可以.
+    -   TSDB合并很简单,qualifiers大小是固定的,value的大小可以从qualifiers中获取,因此可以直接连接起来就可以.
     合并发生的时间是当前行已经过去了一个小时,或者读取未合并的行(如果合并以后再次写入,可以再次合并)
     
-    
-
+ +  tsdb-uid Table和UID的设计:
+    -   做了太多用户产品,第一映像就把UID理解为用户ID,它本身是Unique ID,在TSDB里面,matrixName,tag-key,tag-value都映射为UID,
+    进而可以进一步编码到rowkey中.UID默认是一个3字节的无符号数目
+    -   利于tsdb-uid表存储UID和stringName(stringName类型有matrixName,tag-key,tag-value)之间的"双向"映射;
+    -   stringName到UID的映射:RowKey=stringName,CF=id,qualifiers=上述stringName一种,value=UID.
+    -   UID到stringName的映射:RowKey=UID,CF=name,qualifiers=上述stringName一种,value=stringName
+    -   UID需要保证唯一信息,tsdb-uid表的第一行,rowKey=\x00,CF=id,qualifiers=上述stringName一种,value=8字节的递增int
+    每次分配一个新的UID,就递增指定qualifiers的value值.
 
 ##   [Coprocessor的设计](https://blogs.apache.org/hbase/entry/coprocessor_introduction)   
 协处理器在RS充当了很重要的角色,也是二级索引实现的一个主要途径
