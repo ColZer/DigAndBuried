@@ -119,7 +119,7 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
     -   TSDB合并很简单,qualifiers大小是固定的,value的大小可以从qualifiers中获取,因此可以直接连接起来就可以.
     合并发生的时间是当前行已经过去了一个小时,或者读取未合并的行(如果合并以后再次写入,可以再次合并)
     
- +  tsdb-uid Table和UID的设计:
++    tsdb-uid Table和UID的设计:
     -   做了太多用户产品,第一映像就把UID理解为用户ID,它本身是Unique ID,在TSDB里面,matrixName,tag-key,tag-value都映射为UID,
     进而可以进一步编码到rowkey中.UID默认是一个3字节的无符号数目
     -   利于tsdb-uid表存储UID和stringName(stringName类型有matrixName,tag-key,tag-value)之间的"双向"映射;
