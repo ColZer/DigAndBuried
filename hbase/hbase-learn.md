@@ -129,7 +129,31 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
     每次分配一个新的UID,就递增指定qualifiers的value值.
 
 ##   [Coprocessor的设计](https://blogs.apache.org/hbase/entry/coprocessor_introduction)   
-协处理器在RS充当了很重要的角色,也是二级索引实现的一个主要途径
+二级索引的设计和实现是现在HBase应用中一个很重要的环节.最近使用phoenix来支持hbase的sql操作和二级索引,那么二级索引在hbase里面是什么实现的?  
+先看一个phoenix创建的表的scheme
+
+> {NAME => 'WEB_STAT', coprocessor$5 => '|org.apache.phoenix.hbase.index.Indexer|107374 true                                          
+>1823|org.apache.hadoop.hbase.index.codec.class=org.apache.phoenix.index.PhoenixIndexC                                               
+>odec,index.builder=org.apache.phoenix.index.PhoenixIndexBuilder', coprocessor$4 => '|                                               
+>org.apache.phoenix.coprocessor.ServerCachingEndpointImpl|1|', coprocessor$3 => '|org.                                               
+>apache.phoenix.coprocessor.GroupedAggregateRegionObserver|1|', coprocessor$2 => '|org                                               
+>.apache.phoenix.coprocessor.UngroupedAggregateRegionObserver|1|', coprocessor$1 => '|                                               
+> org.apache.phoenix.coprocessor.ScanRegionObserver|1|', FAMILIES =} 
+
+结论:二级索引的实现是基于coprocessor来实现的.
+
+coprocessor是HBase中一个功能插件系统,它由observer和endpoint两部分组成,这两部分其实就相对于传统关系数据库中触发器和存储过程.
+
+Observer相当于触发器,可以监听hbase内部相应的事件,并进行处理.根据监听的对象不同,Hbase内部有Master/Region/WAL三种类型的Observer.
+其中Master可以监听Table和Region的DDL操作,Region可以监听GET/PUT/SCAN/DELETE/OPEN/FLUSH,WAL可以监听write的操作.  
+在HBase内部,每个监听对象维持了一个Observer链,如上图的表就有多个coprocessor,根据优先级来确定执行次序.  
+
+Endpoint相对于存储过程,可以被定义并加载在HBase内部,本质上,它是一个动态RPC,从而可以实现在region内部进行数据处理,  
+减少通过scan操作把数据拉取到客户端进行处理的代价.
+Endpoint的执行过程相对于一个mapreduce过程,client将一个table指定的endpoint操作map到每个region上进行处理,并获取每个region的处理结果进行reduce合并操作.
+
+回到上面的二级索引的问题,所谓的二级索引其实就是实现一个Observer,并绑定到table上, 
+从而可以捕获表的get/put/scan操作,写的时候写一次索引,读的时候先去查索引,根据索引的结果来真正查数据.
 
 ##   [BlockCache的设计](http://hbase.apache.org/book/regionserver.arch.html)  
 在做scan/get操作中,都会涉及到BlockCache的加载与清除,对BlockCache的理解和优化,对hbase性能优化有很大的影响
