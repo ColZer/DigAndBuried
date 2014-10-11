@@ -41,6 +41,7 @@ RS以region为管理对象,每个region有自身store管理,在资源上,每个r
 +   版本的个数:HBase在进行数据存储时，新数据不会直接覆盖旧的数据，而是进行追加操作，不同的数据通过时间戳进行区分.默认每行数据存储三个版本.
 +   合理使用blockcache,对于blockcache的问题参考后面详细的学习.
 +   合理使用最小版本和TTL控制cell的有效期,对于过期自动删除的数据尤其有用.    
+
 >Time to live (TTL): This specifies the time after which a record is deleted and is by default set to forever. 
 >This should be changed if you want HBase to delete rows after certain period of the time. 
 >This is useful in the case when you store data in HBase which should be deleted after aggregation.  
