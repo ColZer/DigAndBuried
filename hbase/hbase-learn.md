@@ -22,7 +22,37 @@ RS以region为管理对象,每个region有自身store管理,在资源上,每个r
 总之,RS的能力还是有限,根据官网的建议,100是最好的配置.
 
 ##   [Hbase scheme的设计总结](http://hbase.apache.org/book/schema.html),[资料二](https://communities.intel.com/community/itpeernetwork/datastack/blog/2013/11/10/discussion-on-designing-hbase-tables)  
-Hbase的性能严重依赖Scheme的设计,从rowkey的设计,TTL/版本的个数, HFile的blockSize的大小,BlockCache的选择.
+
++   CF的设计,尽量保证只有一个CF.  
+>由于HBASE的FLUSHING和压缩是基于REGION的,当一个列族所存储的数据达到FLUSHING阀值时该表的所有列族将同时进行FLASHING操作
+>这将带来不必要的Ｉ／Ｏ开销。同时还要考虑到同意和一个表中不同列族所存储的记录数量的差别，即列族的势。
+>当列族数量差别过大将会使包含记录数量较少的列族的数据分散在多个Region之上，而Region可能是分布是不同的RegionServer上。
+>这样当进行查询等操作系统的效率会受到一定影响。  
+>同时针对CF,rowKey是冗余存储的,在rowkey信息量很大的时候,多个CF对磁盘的浪费会很大.
+
++   最小化RowKey,CF,qualifiers的名称.  
+>在HBase这三个东西都是按照字符进行对待的,在设计的时候尽量将int/float类型转换为byte进行存储,比如rowkey为userid=340827182,为一个4字节int,
+>如果直接按照字符串进行编码,每个数字为一个字符,需要占用一个字节而进行byte编码可以控制它的大小.
+>特别是CF/qualifiers完成可以采用单字节进行设置,务必不要和传统数据库一样设置很长的名字.  
+>缺陷是进行byte编码会导致数据看起来不直观,
+
++   hbase返回的结果按照rowkey,CF,qualifiers,timestamp的次序进行排序,合理设置它们自己值来实现排序的功能.
++   在rowKey中加入散列的hex值来避免region的热点问题.针对时序的数据参考openTSDB的设计.
++   版本的个数:HBase在进行数据存储时，新数据不会直接覆盖旧的数据，而是进行追加操作，不同的数据通过时间戳进行区分.默认每行数据存储三个版本.
++   合理使用blockcache,对于blockcache的问题参考后面详细的学习.
++   合理使用最小版本和TTL控制cell的有效期,对于过期自动删除的数据尤其有用.
+>Time to live (TTL): This specifies the time after which a record is deleted and is by default set to forever. 
+>This should be changed if you want HBase to delete rows after certain period of the time. 
+>This is useful in the case when you store data in HBase which should be deleted after aggregation.  
+>  
+>Min Version: As we know HBase maintains multiple version of every record as and when they are inserted. 
+>Min Version should always be used along with TTL. For example if the TTL is set to one year and there is no update on the row 
+>for that period the row will be deleted. If you don’t want the row to be deleted you would have to set a min version for it such that only 
+>the files below that version will be deleted.
+
+
+
+
 
 ##  [region 预先Split/自动Split/手动Split的学习](http://zh.hortonworks.com/blog/apache-hbase-region-splitting-and-merging/)   
 HBase的table的split可以通过pre-splitting,auto-splitting,forced-splitting三个过程来实现.    
@@ -93,13 +123,7 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
     -   tag值kv对按照key的字符序进行排列,从而可以通过设计key值来提高特定tag的优先级,从而实现针对特定tag进行查询的优化.
     
 +   DataTable/Columns的设计亮点:
-    -   单CF的设计,受HBase的实现原理,单CF是最优化的设计.
-    
-    >由于HBASE的FLUSHING和压缩是基于REGION的,当一个列族所存储的数据达到FLUSHING阀值时该表的所有列族将同时进行FLASHING操作
-    >这将带来不必要的Ｉ／Ｏ开销。同时还要考虑到同意和一个表中不同列族所存储的记录数量的差别，即列族的势。
-    >当列族数量差别过大将会使包含记录数量较少的列族的数据分散在多个Region之上，而Region可能是分布是不同的RegionServer上。
-    >这样当进行查询等操作系统的效率会受到一定影响。
-    
+    -   单CF的设计,受HBase的实现原理,单CF是最优化的设计.优点参考上面
     -  rowKey按照小时级别进行存储,而小时级别以下按照时间偏移量存储为qualifiers,
     针对秒级别和毫秒级别的偏移量,qualifiers分为2字节和4字节两种类型进行区别,其中2字节划分前12位来存储时间偏移(最大表示4095s),
     4字节划分22位(最大表示4194303毫秒)来存储毫秒偏移 ,针对4字节,开头4位用于hex存储,22位存储毫秒偏移,2位保留.  
