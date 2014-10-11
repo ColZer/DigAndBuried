@@ -132,13 +132,13 @@ OpenTSDB是站在视角1来对metric进行处理.因此metricName+metricTag+time
 二级索引的设计和实现是现在HBase应用中一个很重要的环节.最近使用phoenix来支持hbase的sql操作和二级索引,那么二级索引在hbase里面是什么实现的?  
 先看一个phoenix创建的表的scheme
 
-> {NAME => 'WEB_STAT', coprocessor$5 => '|org.apache.phoenix.hbase.index.Indexer|107374 true                                          
->1823|org.apache.hadoop.hbase.index.codec.class=org.apache.phoenix.index.PhoenixIndexC                                               
->odec,index.builder=org.apache.phoenix.index.PhoenixIndexBuilder', coprocessor$4 => '|                                               
->org.apache.phoenix.coprocessor.ServerCachingEndpointImpl|1|', coprocessor$3 => '|org.                                               
->apache.phoenix.coprocessor.GroupedAggregateRegionObserver|1|', coprocessor$2 => '|org                                               
->.apache.phoenix.coprocessor.UngroupedAggregateRegionObserver|1|', coprocessor$1 => '|                                               
-> org.apache.phoenix.coprocessor.ScanRegionObserver|1|', FAMILIES =} 
+> {NAME => 'WEB_STAT', 
+>coprocessor$5 => '|org.apache.phoenix.hbase.index.Indexer|1073741823|', 
+>coprocessor$4 => '|org.apache.phoenix.coprocessor.ServerCachingEndpointImpl|1|', 
+>coprocessor$3 => '|org.apache.phoenix.coprocessor.GroupedAggregateRegionObserver|1|', 
+>coprocessor$2 => '|org.apache.phoenix.coprocessor.UngroupedAggregateRegionObserver|1|', 
+>coprocessor$1 => '|org.apache.phoenix.coprocessor.ScanRegionObserver|1|', 
+>FAMILIES =} 
 
 结论:二级索引的实现是基于coprocessor来实现的.
 
