@@ -194,9 +194,8 @@ LruBlockCache的Lru规则是基于block的优先级来实现.它由三个cache�
 
 BucketCache是基于二级缓存来实现.对二级缓存的认识首先要了解HFile的组成.HFile由DATABLOCK , METABLOCK ,DATAINDEX, METAINDEX几部分组成,
 其中DATABLOCK是数据量大头.    
-BucketCache是二级缓存中的L1是基于LruBlockCache实现的,它用于存储INDEX,META在onheap中,L2是用于存储DATABLOCK的offheap,存储中L1中的数据在L1内存不够时候,
+BucketCache二级缓存中的L1是基于LruBlockCache实现的,它用于存储INDEX,META在onheap中,L2是用于存储DATABLOCK的offheap,存储中L1中的数据在L1内存不够时候,
 也会被淘汰到L2中进行缓存.
-
 
 ##   [HBase HMaster Architecture](http://blog.zahoor.in/2012/08/hbase-hmaster-architecture/)   
 HMaster在设计上还是比较轻量级别,HBase集群可以在无Master的情况运行短时间,那么具体HMaster充当了什么功能,需要仔细研究.
