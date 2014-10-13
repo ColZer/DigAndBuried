@@ -177,7 +177,26 @@ Endpoint的执行过程相对于一个mapreduce过程,client将一个table指定
 从而可以捕获表的get/put/scan操作,写的时候写一次索引,读的时候先去查索引,根据索引的结果来真正查数据.
 
 ##   [BlockCache的设计](http://hbase.apache.org/book/regionserver.arch.html)  
-在做scan/get操作中,都会涉及到BlockCache的加载与清除,对BlockCache的理解和优化,对hbase性能优化有很大的影响
+在HBase里面有两个对内存依赖较大的模块,其中一个memStore,它为Hbase写操作提供一个临时缓存,同时为最近写的数据提高一个读缓存.  
+另外一个就是本节学习的BlockCache,它为Hbase的读操作提高了server端的缓存.HBase的存储依赖HDFS,通过BlockCache将HFile缓存到内存,可以很大程度上提高读性能.
+
+HBase针对BlockCache提供了两个实现.LruBlockCache和BucketCache,它们最重要的区别一个是onHeap,一个是offHeap(使用直接内存来实现),在性能上来说,基于onheap
+的LruBlockCache要优于基于offHeap的BucketCache,但是好offHeap的实现采用自定义的内存管理而减少Heap的GC所带来的消耗,
+在cache命中较低的应用来说,采用offheap更加有优势.
+
+LruBlockCache的Lru规则是基于block的优先级来实现.它由三个cache级别来实现,
+
++   Single access priority:数据在第一次被扫描,就进入cache,但是它在cache的优先级也是最低的,在cache不足的时候,将是第一个被删除的数据.
++   Mutli access priority:由Single access priority升级而来.
++   In-memory access priority: HBase的表可以是配置为"in-memory", 它们是优先级最高的,-ROOT-和.META.都是基于基于内存的.
+
+对LruBlockCache一个重要点是淘汰任务不会在cache完全满的时候才会启动,默认在99%时候就会启动淘汰任务.
+
+BucketCache是基于二级缓存来实现.对二级缓存的认识首先要了解HFile的组成.HFile由DATABLOCK , METABLOCK ,DATAINDEX, METAINDEX几部分组成,
+其中DATABLOCK是数据量大头.    
+BucketCache是二级缓存中的L1是基于LruBlockCache实现的,它用于存储INDEX,META在onheap中,L2是用于存储DATABLOCK的offheap,存储中L1中的数据在L1内存不够时候,
+也会被淘汰到L2中进行缓存.
+
 
 ##   [HBase HMaster Architecture](http://blog.zahoor.in/2012/08/hbase-hmaster-architecture/)   
 HMaster在设计上还是比较轻量级别,HBase集群可以在无Master的情况运行短时间,那么具体HMaster充当了什么功能,需要仔细研究.
