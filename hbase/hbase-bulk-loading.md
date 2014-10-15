@@ -77,17 +77,16 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
          }
     configureIncrementalLoad对Job的分区函数,reducer,output进行设置,因此对原始row数据转换为HFile,仅仅需要配置一个Map就可以了.其中reducer的实现也很简单,代码如下:
 
-        protected void reduce(ImmutableBytesWritable row, java.lang.Iterable<KeyValue> kvs,
-              Reducer<ImmutableBytesWritable, KeyValue, ImmutableBytesWritable, KeyValue>.Context context)
-          throws java.io.IOException, InterruptedException {
-            TreeSet<KeyValue> map = new TreeSet<KeyValue>(KeyValue.COMPARATOR);
-            for (KeyValue kv: kvs) {
-              map.add(kv.clone());
-            }
-            int index = 0;
-            for (KeyValue kv: map) {
-              context.write(row, kv);
-            }
+        protected void reduce(ImmutableBytesWritable row, 
+           Iterable<KeyValue> kvs,Context context)  throws IOException, InterruptedException {
+                TreeSet<KeyValue> map = new TreeSet<KeyValue>(KeyValue.COMPARATOR);
+                for (KeyValue kv: kvs) {
+                  map.add(kv.clone());
+                }
+                int index = 0;
+                for (KeyValue kv: map) {
+                  context.write(row, kv);
+                }
          }
     内部维护TreeSet,保证单HFile内部的cell之间有序,进而将他们输出到HFile中.
 
