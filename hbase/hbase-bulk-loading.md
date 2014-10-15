@@ -1,7 +1,6 @@
-HBase Bulk Loading实践与实现深究
+HBase Bulk Loading的实践
 ===
 
-## Bulk Loading实践
 下面代码的功能启动一个mapreduce过程,将hdfs中的文件转化为符合指定table的分区的HFile,并调用LoadIncrementalHFiles将它导入到HBase已有的表中
 
         public static class ToHFileMapper 
@@ -97,8 +96,8 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
 
         LoadIncrementalHFiles load = new LoadIncrementalHFiles(conf);
         load.run(new String[]{tmpPath,table});
+     本来打算详细写一下LoadIncrementalHFiles的实现,但是通读了一下这块的实现,其实很简单的,首先确认每个HFile该放到哪个region里
+     (代码实现允许单个大HFile跨多个region,内部会自动对文件进行切割到两个region里), 然后连接每个HFile所对应的regionServer,做server端的文件Move操作.
 
 一切就这么简单,就可以大吞吐的将数据导入到HBase中,大幅度的减少HDFS的IO压力.  
 代码连接:[ToHFile.java](./ToHFile.java)
-
-## LoadIncrementalHFiles实现深究
