@@ -23,7 +23,7 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 +   期望完成日期：2014-10-30
 +   坑状态：doing
 
-## [HBase的学习与总结笔记](./hbase/hbase-learn.md)
+## [HBase总结笔记](./hbase/hbase-learn.md)
 在Hadoop系里面玩了几年了,但是HBase一直以来都不太原因去深入学习.这次借项目,系统的对HBase进行学习,这里对Hbase里面一些核心主题进行总结.
 目前还没有打算从源码层面去深入研究的计划,后面有时间再一一研究.
 
