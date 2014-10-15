@@ -21,7 +21,7 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-30
-+   坑状态：doning
++   坑状态：doing
 
 # [HBase的学习与总结笔记](./hbase/hbase-learn.md)
 在Hadoop系里面玩了几年了,但是HBase一直以来都不太原因去深入学习.这次借项目,系统的对HBase进行学习,这里对Hbase里面一些核心主题进行总结.
@@ -29,7 +29,16 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 
 +   开始埋坑日期:2014-10-10
 +   期望完成日期：2014-10-30
-+   坑状态：doning
++   坑状态：doing
+
+#   [HBase Bulk Loading实践与实现深究](./hbase/hbase-bulk-loading.md)
+近期需要将mysql中的30T的数据导入到HBase中,一条条put,HDFS的IO负载太大,所以采用Hbase内部提供的Bulk Loading工具批量导入.   
+Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们只需要通过一个mapreduce将原始数据写为HFile格式,就可以轻易导入大量的数据.  
+这里对Bulk Loading进行总结,并深入追究它的实现细节
+
++   开始埋坑日期:2014-10-15
++   期望完成时间:2014-10-20
++   坑状态:doing
 
 # Spark-Block管理
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑，这个坑填好的时候，也许spark也就通了。
