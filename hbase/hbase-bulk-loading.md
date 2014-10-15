@@ -44,9 +44,7 @@ HBase Bulk Loading实践与实现深究
 
 +   ToHFileMapper是一个Map过程,它读取一个HDFS文件,并输出key=ImmutableBytesWritable,Value=KeyValue类型的kv数据.
 KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family,qualifiers,timestamp,value大小,value值组成,参考下列的可视化输出:   
-
-        K: 59129_3471712620_1374007953/f:status/1413288274401/Put/vlen=1/ts=0 V: 0
-
+        K: 59129_3471712620_1374007953/f:status/1413288274401/Put/vlen=1/ts=0 V: 0   
 我们都知道HBase中数据是按照KV的格式进行组织和存储,在HBase层面它的key是rowKey,但是HFile层面,这里的key不仅仅是rowKey,参考上面的输出中K,
 它由rowKey/family:qualifier/timestamp/类型/vlen=Value的大小/ts组成. 而Value就为对应的值.  
 我们可以通过KeyValue的API进行设置其中的每个字段的值,从而输出一条cell.注意mysql中一条记录中的每个字段对应HBase中一个cell,所以一条记录会输出多个cell.
@@ -75,7 +73,7 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
               job.setReducerClass(PutSortReducer.class);
             } 
          }
-configureIncrementalLoad对Job的分区函数,reducer,output进行设置,因此对原始row数据转换为HFile,仅仅需要配置一个Map就可以了.其中reducer的实现也很简单,代码如下:
+    configureIncrementalLoad对Job的分区函数,reducer,output进行设置,因此对原始row数据转换为HFile,仅仅需要配置一个Map就可以了.其中reducer的实现也很简单,代码如下:
 
         protected void reduce(ImmutableBytesWritable row, java.lang.Iterable<KeyValue> kvs,
               org.apache.hadoop.mapreduce.Reducer<ImmutableBytesWritable, KeyValue, ImmutableBytesWritable, KeyValue>.Context context)
@@ -89,7 +87,7 @@ configureIncrementalLoad对Job的分区函数,reducer,output进行设置,因此�
               context.write(row, kv);
             }
          }
-内部维护TreeSet,保证单HFile内部的cell之间有序,进而将他们输出到HFile中.
+    内部维护TreeSet,保证单HFile内部的cell之间有序,进而将他们输出到HFile中.
 
 +   HFile结果输出.上述我们描述了Table,Region,HFile之间关系,其中我们没有对family进行考虑,在每个Region中,Family为管理的最大单位,它为每个rowKey的每个Family
 维护一个单独的store(menstore+HFile组成).因此HFile的输出也是按照Family+region进行分开组织的.具体的结构这里就不描述了.
