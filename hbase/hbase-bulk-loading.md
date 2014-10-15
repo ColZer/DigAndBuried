@@ -4,17 +4,19 @@ HBase Bulk Loading实践与实现深究
 ## Bulk Loading实践
 下面代码的功能启动一个mapreduce过程,将hdfs中的文件转化为符合指定table的分区的HFile,并调用LoadIncrementalHFiles将它导入到HBase已有的表中
 
-        public static class ToHFileMapper extends Mapper<Object, Text, ImmutableBytesWritable, KeyValue>{
+        public static class ToHFileMapper 
+            extends Mapper<Object, Text, ImmutableBytesWritable, KeyValue>{
                 Random random = new Random();
                 ImmutableBytesWritable oKey = new ImmutableBytesWritable();
-                public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-                    KeyValueBuilder builder = new FileMetaBuilder();
-                    Iterator<KeyValue> keyValues = builder.getKeyValueFromRow(value.toString());
-                    oKey.set(builder.getKey(value.toString()));
-                    while(keyValues.hasNext()) {
-                        KeyValue tmp = keyValues.next();
-                        context.write(oKey, tmp);
-                    }
+                public void map(Object key, Text value, Context context) 
+                    throws IOException, InterruptedException {
+                        KeyValueBuilder builder = new FileMetaBuilder();
+                        Iterator<KeyValue> keyValues = builder.getKeyValueFromRow(value.toString());
+                        oKey.set(builder.getKey(value.toString()));
+                        while(keyValues.hasNext()) {
+                            KeyValue tmp = keyValues.next();
+                            context.write(oKey, tmp);
+                        }
                 }
          }
          
@@ -76,7 +78,7 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
     configureIncrementalLoad对Job的分区函数,reducer,output进行设置,因此对原始row数据转换为HFile,仅仅需要配置一个Map就可以了.其中reducer的实现也很简单,代码如下:
 
         protected void reduce(ImmutableBytesWritable row, java.lang.Iterable<KeyValue> kvs,
-              org.apache.hadoop.mapreduce.Reducer<ImmutableBytesWritable, KeyValue, ImmutableBytesWritable, KeyValue>.Context context)
+              Reducer<ImmutableBytesWritable, KeyValue, ImmutableBytesWritable, KeyValue>.Context context)
           throws java.io.IOException, InterruptedException {
             TreeSet<KeyValue> map = new TreeSet<KeyValue>(KeyValue.COMPARATOR);
             for (KeyValue kv: kvs) {
