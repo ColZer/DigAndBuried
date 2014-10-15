@@ -40,7 +40,7 @@ Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们
 
 ## [metric系统的学习](./base/metric-learn.md)
 对于Hadoop/Spark/HBase此类的分布式计算系统的日常维护,熟读系统的metric信息应该是最重要的技能.本文对Hadoop的metric/metric2的实现进行深究,
-但也仅仅是对实现的角度进行分析,对metric的完全理解需要时间积累,这样才能理解整个系统中每个metric的值对系统的影响.  
+但也仅仅是从实现的角度进行分析,对metric的完全理解需要时间积累,这样才能理解整个系统中每个metric的值对系统的影响.  
 在JVM内部,本身也有一套metric系统JMX,通过JMX可以远程查看甚至修改的应用运行时信息,本文将会从JMX开始,一步一步对这几套系统metric的实现进行分析.
 
 +   开始埋坑日期:2014-10-15
