@@ -101,4 +101,3 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
      具体就不写了.
 
 一切就这么简单,就可以大吞吐的将数据导入到HBase中,大幅度的减少HDFS的IO压力.  
-代码连接:[ToHFile.java](./ToHFile.java)
