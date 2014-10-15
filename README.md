@@ -34,10 +34,8 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 #   [HBase Bulk Loading实践](./hbase/hbase-bulk-loading.md)
 近期需要将mysql中的30T的数据导入到HBase中,一条条put,HDFS的IO负载太大,所以采用Hbase内部提供的Bulk Loading工具批量导入.   
 Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们只需要通过一个mapreduce将原始数据写为HFile格式,就可以轻易导入大量的数据.  
-这里对Bulk Loading进行简单总结
 
 +   开始埋坑日期:2014-10-15
-+   期望完成时间:2014-10-20
 +   坑状态:done
 
 # Spark-Block管理
