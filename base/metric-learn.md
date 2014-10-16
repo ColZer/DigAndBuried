@@ -67,10 +67,10 @@ Hadoop metric在代码实现上有两个版本,分别位于org.apache.hadoop.met
   
 抽象到metric系统,一条metric记录的逻辑结构可以表示为:
 
->recordName表示这条metric记录的名称
->一组KV组合起来的tagMap,每个KV描述该记录的一个Tag信息,比如key=host,value=bj-01就表示该metric记录归属的host为bj-01
->一组KV组合起来的metricTable,每个KV描述该记录的一个统计项(metric项),比如key=memory-used,value=10g表示memory-used这个metric项的统计值.
->每个metric统计项的值类型有两种ABSOLUTE和INCREMENT,分别表示绝对值和增量值,比如当前空闲内存就是一个ABSOLUTE,而软件启动到现在处理的请求数就是一个增量值.
+>+  recordName表示这条metric记录的名称
+>+  一组KV组合起来的tagMap,每个KV描述该记录的一个Tag信息,比如key=host,value=bj-01就表示该metric记录归属的host为bj-01
+>+  一组KV组合起来的metricTable,每个KV描述该记录的一个统计项(metric项),比如key=memory-used,value=10g表示memory-used这个metric项的统计值.
+>+  每个metric统计项的值类型有两种ABSOLUTE和INCREMENT,分别表示绝对值和增量值,比如当前空闲内存就是一个ABSOLUTE,而软件启动到现在处理的请求数就是一个增量值.
 
 由recordName+tagMap+metricTable就组成了一条metric记录,它反应一个recordName统计对象在特定的tag环境下面,每个统计项的统计值.   
 上面我们对metric的逻辑结构进行分析,其实它就是MetricsRecord类的实现.
