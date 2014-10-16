@@ -97,6 +97,7 @@ MetricsContext提供registerUpdater/unregisterUpdater接口,从而接受Updator�
 并对record进行相应的持久化处理.
 
 MetricContext的创建,依赖ContextFactory,该工厂类在初始化时候,从hadoop配置文件目录中读取hadoop-metrics.properties,比如针对dfs这个MetricContext配置:  
+
         dfs.class=org.apache.hadoop.metrics.file.FileContext  
 
 那么我们就可以通过ContextFactory.getContext("dfs");获取一个FileContext对象,从而可以把从每个Updater中收集到metric信息写到文件中.
