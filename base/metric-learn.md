@@ -52,4 +52,55 @@ Attribute,Operation,Constructor,和Notification.
 >但如果是其他自定义类型，则被转换成CompositeDataSupport类。
 >详细描述参考:[http://clarenceau.iteye.com/blog/1827026](http://clarenceau.iteye.com/blog/1827026)
 
-JMX基本就这样,框架很简单,但是功能很强大,特别在分布式系统中,通过JMX可以实现远程来对应用程序进行监控
+JMX基本就这样,框架很简单,但是功能很强大,特别在分布式系统中,通过JMX可以实现远程来对应用程序进行监控.
+
+#Hadoop Metric
+Hadoop metric在代码实现上有两个版本,分别位于org.apache.hadoop.metrics/metrics2两个包中,本节我们核心来讨论一下Metric v1的实现.  
+从功能和设计上来看,Metric v1的实现很简单,核心类也只有ContextFactory,MetricsContext,Updater,MetricsRecord四个.
+
+在开始讨论Metric v1每个类的具体实现前,我们先剖析一下什么是metric.  
+在上一节我们讨论的MBean,抛开Operation不说(metric系统仅仅围绕信息的收集,不关心操作和交互),那么MBean的逻辑结构可以表示为:
+
+>ObjectName.domain+一组KeyValue组成的ObjectName为索引,值为一组Attribute(每个attribute由变量名加上变量值组成).
+  
+抽象到metric系统,一条metric记录的逻辑结构可以表示为:
+
+>recordName表示这条metric记录的名称
+>一组KV组合起来的tagMap,每个KV描述该记录的一个Tag信息,比如key=host,value=bj-01就表示该metric记录归属的host为bj-01
+>一组KV组合起来的metricTable,每个KV描述该记录的一个统计项(metric项),比如key=memory-used,value=10g表示memory-used这个metric项的统计值.
+>每个metric统计项的值类型有两种ABSOLUTE和INCREMENT,分别表示绝对值和增量值,比如当前空闲内存就是一个ABSOLUTE,而软件启动到现在处理的请求数就是一个增量值.
+
+由recordName+tagMap+metricTable就组成了一条metric记录,它反应一个recordName统计对象在特定的tag环境下面,每个统计项的统计值.   
+上面我们对metric的逻辑结构进行分析,其实它就是MetricsRecord类的实现.
+
+        public class MetricsRecordImpl implements MetricsRecord {
+            private TagMap tagTable = new TagMap();
+            private Map<String,MetricValue> metricTable = new LinkedHashMap<String,MetricValue>();
+            private String recordName;
+            private AbstractMetricsContext context;        
+        ....
+
+每个recordName都需要一个实体对象去和业务代码交互,读取业务代码运行过程中各种运行时信息,并把这些运行时的信息转化metric记录.  
+同时该实体对象需要对外提供接口,定时的从中获取一条当前的metric记录.  
+在metric v1中,该实体对象就是一个实现Updater接口的对象,该接口只有一个函数doUpdates,每次实体对象的该函数被调用,就需要向对方返回一条metric记录.
+
+        public interface Updater {
+          public abstract void doUpdates(MetricsContext context);        
+        }
+        
+参考ShuffleClientMetrics实体类的实现,它继承Updater接口,每次doUpdates函数被调用,就返回一条当前运行shuffle运行的统计数据.
+
+Updater实体类是一个被动类,它不会主动的去采集metric信息,而是将自己注册到一个中控.中控类会定时的去请求所有已经注册的Updater的doUpdates的函数,
+获取一条记录,并把记录保存在内部容器中,或写到File/Ganglia中,这里谈到的中控本质就是MetricsContext的实现.  
+
+MetricsContext提供registerUpdater/unregisterUpdater接口,从而接受Updator的注册,并在内部维护一个定时器,定时遍历所有注册的Updater获取一条Record,
+并对record进行相应的持久化处理.
+
+MetricContext的创建,依赖ContextFactory,该工厂类在初始化时候,从hadoop配置文件目录中读取hadoop-metrics.properties,比如针对dfs这个MetricContext配置:  
+>dfs.class=org.apache.hadoop.metrics.file.FileContext  
+
+那么我们就可以通过ContextFactory.getContext("dfs");获取一个FileContext对象,从而可以把从每个Updater中收集到metric信息写到文件中.
+
+总结:Hadoop metric V1版本是一个过时的metric系统,系统整体设计很简单,对于一般应用是够用.但是它有很大的缺点,它目前只提供了File/Ganglia两种context的实现,  
+而且它没有对JVM内部强大的JMX进行支持.  这点对于metric信息的收集和展现带来很大的局限性. 下面我们讨论Metric2就考虑到与JMX的继承.
+
