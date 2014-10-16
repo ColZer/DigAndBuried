@@ -55,7 +55,7 @@ Attribute,Operation,Constructor,和Notification.
 JMX基本就这样,框架很简单,但是功能很强大,特别在分布式系统中,通过JMX可以实现远程来对应用程序进行监控.
 
 #Hadoop Metric
-Hadoop metric在代码实现上有两个版本,分别位于org.apache.hadoop.metrics/metrics2两个包中,本节我们核心来讨论一下Metric v1的实现.  
+Hadoop metric在代码实现上有两个版本,分别位于org.apache.hadoop.metrics/metrics2两个包中,下面我们会分别进行分析
 
 ##  Metric v1
 从功能和设计上来看,Metric v1的实现很简单,核心类也只有ContextFactory,MetricsContext,Updater,MetricsRecord四个.
