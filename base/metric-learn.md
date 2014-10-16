@@ -1,0 +1,55 @@
+Metric系统的剖析
+====
+
+#JMX剖析
+metric信息用于对软件系统的运行状态进行监控,在JAVA中,JVM提供了一套功能强大的框架来完成这个工作:JMX.它可以实现对运行时的软件各种metric信息收集,传输,甚至
+可以通过远程修改当前正在运行的软件系统的内置参数.  
+在JMX有两个核心概念MBeanServer和MBean. (这里没有考虑远程JMX,如果考虑远程,还有JMX ServerAgent,Protocol,Connectors,它们实现远程来管理一组MBean对象)
+MBean与其他Bean一样,它是一个蕴含状态的实体对象,每个MBean对外提供了一组可以访问的Attribute,Operation,Constructor,和Notification
+(通过Notification来实现Bean之间通信).与metric接头,那么每个bean中就相当与一组我们可以远程监控的metric;  
+JMX中对MBean划分为四种类型:
+
+>+   standard MBean:最简单的MBean,它通过接口来定义需要管理的Attribute,Operation,Constructor,然后基于这个接口来实现MBean.
+>+   dynamic MBean:动态MBean通过实现javax.management.DynamicMBean接口中的getAttribute()和invoke()方法来对外暴露Attribute,Operation
+>+   model MBean:与标准和动态MBean相比，你可以不用写MBean类，只需使用javax.management.modelmbean.RequiredModelMBean即可。
+RequiredModelMBean实现了ModelMBean接口，而ModelMBean扩展了DynamicMBean接口，因此与DynamicMBean相似，
+Model MBean的管理资源也是在运行时定义的。与DynamicMBean不同的是，
+DynamicMBean管理的资源一般定义在DynamicMBean中（运行时才决定管理那些资源），
+而model MBean管理的资源并不在MBean中，而是在外部（通常是一个类），只有在运行时，才通过set方法将其加入到model MBean中。
+>+   open MBean:没有详细去了解
+
+MBean类型不同,只是她们实现的方法不同而已,核心本质都是对外提供一组可以访问的Attribute,Operation,Constructor,和Notification.
+
+下面来讨论MBeanServer,一个MBean对象就是一个普通的对象,在应用程序内部,它可以被其他类调用(比如按照MBean规范定义一个应用程序配置信息的class,
+维护应用程序运行时所有配置信息),要让一个按照MBean规范定义的MBean对象被JMX应用程序框架所管理,那么它们就需要将其"注册到MBeanServer"中.  
+
+MBeanServer它是JMX中所有MBean对象的容器和代理.  
+首先它是一个容器,通过registerMBean和unregisterMBean接口可以将一个MBean对象注册到MBeanServer中.
+MBean对象这里就表示为Object,一个注册到MBeanServer的Object必须指定一个ObjectName,从而通过Object+ObjectName作为容器中的KV进行一一关联.  
+ObjectName也是JMX里面一个核心类,它规范化"MBean对象名称"的定义,每个ObjectName由"domain:key1 = value1,key2 = value2"格式进行描述,比如Hadoop
+中所有对象的MBean对象的ObjectName为"Hadoop:service="+ serviceName +",name="+ nameName;"    
+由Object+ObjectName组合的MBean对象就组成一个ObjectInstance对象.
+
+其次MBeanServer也是一个代理,它充当所有注册注册到MBeanServer中的MBean对象的Proxy,通过该Proxy实现对MBean的操作.我们可以通过createMBean,instantiate操作
+新创建和获取已有的MBean的ObjectInstance对象.也可以通过getAttributes来获取指定ObjectName所对应MBean对象的属性,通过invoke来执行MBean对象中的方法.
+
+另外一个更加重要的是,我们通过Object+ObjectName将一个MBean对象注册到MBeanServer中,该MBean对象将会被解析,通过MBeanInfo来描述这个MBean对象的包含的所有
+Attribute,Operation,Constructor,和Notification.  
+从一定程度上来说,MBeanInfo也是通过MBeanServer的代理将一个MBean对外进行开放;由于MBeanInfo对象是根据MBean来生成的,所有APi建议不要对MBeanInfo对象进行修改.
+保持它的不变性.
+
+对于一个Metric系统,JMX中的MBean和MBeanServer充当着metric表示和存储容器,进而可以通过JMX中定义的ServerAgent等组件将容器中的MBean对象的状态暴露出去,
+并接受对MBean对象的操作.目前支持的ServerAgent很多,比如HTTP,SNMP,RMI,JINI等.不管采用哪一种Agent,它们做的工作都是将MBeanServer中所有MBeanInfo进行可视化展示而已.  
+所以这里就不详细去描述每种ServerAgent的实现.
+
+上述的内容都在javax.management包中,另外在java.lang.management包中定义了一组用于获取JVM运行时的内存信息,GC信息,ClassLoad信息等MXBean对象的接口. 
+对的,是MXBean而不是MBean,在上面描述的4中MBean类型中,MXBean是属于standard MBean的一种变种.
+
+>而MXBean与MBean的区别主要是在于在接口中会引用到一些其他类型的类时，其表现方式的不一样。
+>在MXBean中，如果一个MXBean的接口定义了一个属性是一个自定义类型，如MemoryMXBean中定义了heapMemoryUsage属性，
+>这个属性是MemoryUsage类型的，当JMX使用这个MXBean时，这个MemoryUsage就会被转换成一种标准的类型，这些类型被称为开放类型，
+>是定义在javax.management.openmbean包中的。而这个转换的规则是，如果是原生类型，如int或者是String，则不会有变化，
+>但如果是其他自定义类型，则被转换成CompositeDataSupport类。
+>详细描述参考:[http://clarenceau.iteye.com/blog/1827026](http://clarenceau.iteye.com/blog/1827026)
+
+JMX基本就这样,框架很简单,但是功能很强大,特别在分布式系统中,通过JMX可以实现远程来对应用程序进行监控
