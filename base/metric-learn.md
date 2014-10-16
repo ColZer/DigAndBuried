@@ -56,6 +56,8 @@ JMX基本就这样,框架很简单,但是功能很强大,特别在分布式系�
 
 #Hadoop Metric
 Hadoop metric在代码实现上有两个版本,分别位于org.apache.hadoop.metrics/metrics2两个包中,本节我们核心来讨论一下Metric v1的实现.  
+
+##  Metric v1
 从功能和设计上来看,Metric v1的实现很简单,核心类也只有ContextFactory,MetricsContext,Updater,MetricsRecord四个.
 
 在开始讨论Metric v1每个类的具体实现前,我们先剖析一下什么是metric.  
