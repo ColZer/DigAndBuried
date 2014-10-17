@@ -109,7 +109,7 @@ MetricContext的创建,依赖ContextFactory,该工厂类在初始化时候,从ha
 
 ## Metric v2
 Metric2在设计上比Metric1要复杂多了,下面我们一点点的剖析.
-### record表示
+#### record表示
 和metric1基本一致,一条metric record由recordName+tagMap+metricTable,但是metric做了两处简单的变动.
 
 >+  变动一,recordName,tagName,metricName都从现在的string抽象为MetricsInfo,由原先单单的name抽象为name+description,
@@ -138,7 +138,7 @@ MutableMetric对外提供一个metric到"目前为止是否改变"的语义和�
 >+  上面的addRecord并不是把一个metric-record作为参数直接添加到collector中,而是针对当前的record的record name返回一个builder,客户端根据该builder进行
 设置tag,context,metric的值.
 
-### MetricsSource
+#### MetricsSource
 在metric v1中,一个Updater表示一个数据源,对外提供doUpdates接口向外部反馈一条metric record记录.而在metric v2中,updater抽象为MetricsSource,和updater一样,
 对外提供getMetrics接口.
 
