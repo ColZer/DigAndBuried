@@ -117,10 +117,10 @@ Metric2在设计上比Metric1要复杂多了,下面我们一点点的剖析.
 >+  变动二,从tagMap中抽离出一个特有TAG,即context,该tag的description字段为"Metrics context",context可以翻译为metric所处于的上下文,
 比如QueueMetrics用于yarn中队列的metric信息,那么该metric的context值就为"yarn";
 
-这两点变动都比较小,都容易理解.另外针对metric值做了一个很大的改变,在metric v1很简单,直接简单表示为name+value,而在metric v2中引入了MutableMetric类
-以及一组针对特定类型的类,如MutableGaugeInt.
+这两点变动都比较小,都容易理解.另外针对metric值做了一个很大的改变,在metric v1很简单,直接表示为name+value,而在metric v2中引入了MutableMetric类
+以及一组针对特定类型的类,如MutableGaugeInt.来对metric的值进行表示.
 
-MutableMetric对外提供一个metric到"目前为止是否改变"的语义和改变这个语义的接口,另外针对一个metric值提供一个返回当前快照的接口snapshot
+MutableMetric对外提供一个metric"到目前为止是否改变"的语义和改变这个语义的接口,另外针对一个metric值提供一个返回当前快照的snapshot接口
 
         public void snapshot(MetricsRecordBuilder builder, boolean all) {
             if (all || changed()) {
@@ -135,7 +135,7 @@ MutableMetric对外提供一个metric到"目前为止是否改变"的语义和�
 另外针对record的容器,metric引入collector和recordBuilder的两个概念概念
 
 >+  MetricsCollector类可以理解为metric record容器的表示,通过addRecord向该容器添加一条记录:MetricsRecordBuilder addRecord(MetricsInfo info);
->+  上面的addRecord并不是把一个metric-record作为参数直接添加到collector中,而是针对当前的record的record name返回一个builder,客户端根据该builder进行
+>+  上面的addRecord并不是把一个metric-record作为参数直接添加到collector中,而是针对当前的record返回一个builder,客户端根据该builder进行
 设置tag,context,metric的值.
 
 #### MetricsSource
