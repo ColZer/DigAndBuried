@@ -107,3 +107,104 @@ MetricContext的创建,依赖ContextFactory,该工厂类在初始化时候,从ha
 总结:Hadoop metric V1版本是一个过时的metric系统,系统整体设计很简单,对于一般应用是够用.但是它有很大的缺点,它目前只提供了File/Ganglia两种context的实现,  
 而且它没有对JVM内部强大的JMX进行支持.  这点对于metric信息的收集和展现带来很大的局限性. 下面我们讨论Metric2就考虑到与JMX的继承.
 
+## Metric v2
+Metric2在设计上比Metric1要复杂多了,下面我们一点点的剖析.
+### record表示
+和metric1基本一致,一条metric record由recordName+tagMap+metricTable,但是metric做了两处简单的变动.
+
+>+  变动一,recordName,tagName,metricName都从现在的string抽象为MetricsInfo,由原先单单的name抽象为name+description,
+这点更加符合日常使用,因为name不够描述的时候,可以使用description进行详细描述该"name"的作用.
+>+  变动二,从tagMap中抽离出一个特有TAG,即context,该tag的description字段为"Metrics context",context可以翻译为metric所处于的上下文,
+比如QueueMetrics用于yarn中队列的metric信息,那么该metric的context值就为"yarn";
+
+这两点变动都比较小,都容易理解.另外针对metric值做了一个很大的改变,在metric v1很简单,直接简单表示为name+value,而在metric v2中引入了MutableMetric类
+以及一组针对特定类型的类,如MutableGaugeInt.
+
+MutableMetric对外提供一个metric到"目前为止是否改变"的语义和改变这个语义的接口,另外针对一个metric值提供一个返回当前快照的接口snapshot
+
+        public void snapshot(MetricsRecordBuilder builder, boolean all) {
+            if (all || changed()) {
+              builder.addGauge(info(), value);
+              clearChanged();
+            }
+        }
+
+当一个MutableMetric的snapshot方法被调用,内部会判断从上一次快照到现在,metric的值是否被改变,如果没有改变,那么就不会返回任何信息,否则会将当前改变的值
+写到参数MetricsRecordBuilder中,并清除当前的改变.
+
+另外针对record的容器,metric引入collector和recordBuilder的两个概念概念
+
+>+  MetricsCollector类可以理解为metric record容器的表示,通过addRecord向该容器添加一条记录:MetricsRecordBuilder addRecord(MetricsInfo info);
+>+  上面的addRecord并不是把一个metric-record作为参数直接添加到collector中,而是针对当前的record的record name返回一个builder,客户端根据该builder进行
+设置tag,context,metric的值.
+
+### MetricsSource
+在metric v1中,一个Updater表示一个数据源,对外提供doUpdates接口向外部反馈一条metric record记录.而在metric v2中,updater抽象为MetricsSource,和updater一样,
+对外提供getMetrics接口.
+
+        public interface MetricsSource {
+          void getMetrics(MetricsCollector collector, boolean all);
+        }
+        
+任何想被监控的metric信息都需要继承MetricSource接口,并实现getMetrics方法.在metric2中,MetricSource的实现是一大亮点,
+在详细讲解这个实现之前我们想看一个类:MetricsRegistry
+
+MetricsRegistry类很重要,它会强制成为每个MetricSource类字段,如果用户类没有包含这个字段,该source会被系统进行封装.因此一个好建议每个自定义的source都包含该字段.
+
+MetricsRegistry在source中充当record的生成器,它提供了一条record的tag和metric的"对象真正的分配",这句话的意思很重要,打个比如:  
+一个source里面定义一个MutableGaugeInt变量来表示我们对外反馈一个Int的metric信息,注意这里说的是定义,没有对这个变量指向对象的分配(new),
+对这个变量的分配,我们需要调用source内部的MetricsRegistry的newGauge(MetricsInfo info, int iVal) 函数进入分配,看一下这个函数的源码:
+
+        public synchronized MutableGaugeInt newGauge(MetricsInfo info, int iVal) {
+            checkMetricName(info.name());
+            MutableGaugeInt ret = new MutableGaugeInt(info, iVal);
+            metricsMap.put(info.name(), ret);
+            return ret;
+        }
+看这个函数的源码我们知道,它在内部做了对象的初始化,返回一个对象引用,并把该对象添加到MetricsRegistry内部的一个metricsMap中,对于tag也一样,MetricsRegistry
+内部有一个tagsMap.这里MetricsRegistry就相当于维护一个source内部metric和tag对象的注册表,通过MetricsRegistry内部的snapshot,我们就可以返回一条当前record的镜像.
+
+        public synchronized void snapshot(MetricsRecordBuilder builder, boolean all) {
+            for (MetricsTag tag : tags()) {
+              builder.add(tag);
+            }
+            for (MutableMetric metric : metrics()) {
+              metric.snapshot(builder, all);
+            }
+        }
+到目前为止,我们还没有看到MetricsRegistry在Source中的作用,只是把一个简单new过程复杂为一个函数调用.病提供一个snapshot函数简化record的构建.  
+
+但是Source的设计亮点在处于可以直接省略掉newGauge之类的方法的调用,通过属性Field的标注来设置metric的属性以及自动进行初始化.
+参考一个例子:
+
+        @Metrics(context="yarn")
+        public class QueueMetrics implements MetricsSource {
+          @Metric("# of apps submitted") MutableCounterInt appsSubmitted;
+          @Metric({"Snapshot", "Snapshot stats"}) MutableStat snapshotStat;
+        }
+对于QueueMetrics,通过对appsSubmitted和snapshotStat两个MutableMetric进行@Metric标注,系统会自动对两个metric进行初始化,并设置metric的name和description.
+在QueueMetrics中不需要对appsSubmitted进行初始化,就可以直接进行赋值. 
+
+通过这种类型的标注,可以最大化的节省source的开发. 
+
+另外除了对field进行标注以外,针对source本身,也可以进行@Metrics(context="yarn")来设置source的context属性,从而从该source产生的所有record的context属性都该值.
+
+话说这一系列是怎么实现的?它有一个前提就是该source必须被注册到到MetricsSystem中,MetricsSystem和metric v1的context概念一致,通过调用register函数来进行注册.
+
+        @Override public synchronized <T>
+        T register(String name, String desc, T source) {
+            MetricsSourceBuilder sb = MetricsAnnotations.newSourceBuilder(source);
+            final MetricsSource s = sb.build();
+            MetricsInfo si = sb.info();
+            ...
+        }
+在register函数内部调用MetricsSourceBuilder sb = MetricsAnnotations.newSourceBuilder(source)对原始的source进行封装,并build出一个初始化以后的MetricsSource.
+具体MetricsSourceBuilder我就不写出来,逻辑还是比较简单,从事的工作就是对所有@Metric标注的metric变量在source的MetricsRegistry进行初始化,并设置引用到变量上.
+
+另外因为MetricsRegistry的存在,任何在source中对metric变量的修改都会反应到MetricsRegistry内部变量的改变,通过基于MetricsRegistry内部的snapshot接口,
+实现MetricsSource的getMetrics接口会显得十分简单,比如:
+
+        public synchronized void getMetrics(MetricsCollector collector, boolean all) {
+            registry.snapshot(collector.addRecord(registry.info()), all);
+        }
+一切是不是如此简单!
