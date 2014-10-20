@@ -208,3 +208,101 @@ MetricsRegistry在source中充当record的生成器,它提供了一条record的t
             registry.snapshot(collector.addRecord(registry.info()), all);
         }
 一切是不是如此简单!
+
+#### MetricsSink
+在metric v1中,收集的record信息是由context自己来确定如果进行输出,因此就有FileContext和GangliaContext等子类,但是在Metric v2中,将metric的输出抽象化为
+MetricSink类,和MetricSource的概念相对应,一个用于metric信息的收集,一个用于metric信息的持久化输出.   
+MetricSink接口很简单:
+
+        public interface MetricsSink extends MetricsPlugin {
+          /**
+           * Put a metrics record in the sink
+           * @param record  the record to put
+           */
+          void putMetrics(MetricsRecord record);
+        
+          /**
+           * Flush any buffered metrics
+           */
+          void flush();
+        }
+通过MetricsSystem的register接口可以将一个MetricSink进行注册,从而在System的计数器定时调度过程中,将收集到record进行持久化输出.与Metric v1不同,一个System
+可以注册多个MetricSink,从而实现将同一条metric-record记录输出到多个端.
+
+### 异步化MetricsSink
+上面谈到MetricsSink,它putMetrics方法接受一个MetricRecord并进行输出,但是在真实的生成环境,有些MetricsSink完成一次record的sink操作耗时很长,此时就会造成System堵塞,
+不过我们的MetricSink的实现者,可以在putMetrics实现时候维持一个异步化队列,从而避免了System的堵塞.
+
+针对这一类需求,Metric v1内部对register的sink做了一次封装:MetricsSinkAdapter,并对System提供putMetrics和putMetricsImmediate两个接口,其中默认的putMetrics是异步接口,
+内部维持一个生产者-消费者模型,而putMetricsImmediate是同步接口.  同时提供start和stop两个方法用于启动和关闭生产者和消费者模型.
+
+MetricsSinkAdapter的封装是用户不感知的,一切都是由MetricsSystem自己进行操作,参考MetricsSystem的register接口的实现:
+        
+        synchronized void registerSink(String name, String desc, MetricsSink sink) {
+            checkNotNull(config, "config");
+            MetricsConfig conf = sinkConfigs.get(name);
+            MetricsSinkAdapter sa = conf != null? newSink(name, desc, sink, conf) : newSink(name, desc, sink, config.subset(SINK_KEY));
+            sinks.put(name, sa);
+            sa.start();
+            LOG.info("Registered sink "+ name);
+        }
+用户实现MetricsSink,是不需要考虑任何异步和同步的问题.
+
+### MetricsSystem的分析
+在前面章节,我们已经多次谈到MetricsSystem.在metric v1中,MetricContext充当了中控节点,接受Updater的注册,定时拉取Updater并将通过自身的接口将收集到的record进行持久化输出.  
+在metric2中,record的收集抽象为MetricSource,record的输出抽象为MetricSink,因此MetricsSystem只需要维持一个定时器定时从Source中拉取数据,并输出到Sink中.
+
+尽管如此,MetricsSystem仍然是一个设计强大的中控节点;
+
++   MetricSource的解析与初始化.在前面谈到Source中我们知道,基于标注来定义的MetricSource十分方便,而对MetricSource的解析就是发现在register到System时候发生.
++   MetricSink的异步化的封装.用户开发MetricSink是不需要考虑到同步和异步的问题,在register到System过程,每个Sink都会被进行封装,从而支持同步和异步的Sink
++   MetricSystem本身被抽象为一个MetricSource.metricSystem在运行过程中,涉及到很多metric信息,这些metric信息的观察对metricSystem运行状况的监控也很重要.  
+参考下面代码,System的source所对应的context以及metric的值.
+        
+        @Metrics(context="metricssystem")
+        public class MetricsSystemImpl extends MetricsSystem implements MetricsSource {
+        
+          private final MetricsRegistry registry = new MetricsRegistry(MS_NAME);
+          @Metric({"Snapshot", "Snapshot stats"}) MutableStat snapshotStat;
+          @Metric({"Publish", "Publishing stats"}) MutableStat publishStat;
+          @Metric("Dropped updates by all sinks") MutableCounterLong droppedPubAll;
+          
+### Metric v2对JMX的支持
+在谈及metric v1的缺陷的时候,我们谈到metric v1没有对JMX进行支持,而metric v2进行了支持.不过这个到目前为止,我们谈到的metric v2系统已经可以正常的运行.那么是在
+什么环境完成对JMX的支持呢?  
+
+JMX的核心是MBean对象,它为metric提供了读取入口和操作入口(getAttribute/setAttribute/invoke).在Metric v2中,MetricSource就是所有的metric信息获取入口,每个MetricSource
+对应一组metric的操作入口,此时如果我们在MetricSource接口的基础上提供上述的方法就可以直接把metricSource暴露给JMX.
+
+是的,没错,Metric v2的实现方式的确如此.参考class MetricsSourceAdapter implements DynamicMBean的实现.和MetricsSink一样,每个Source在System的眼中不是单纯的Source,
+在System对Source解析完成以后,会对Source进行包装为MetricsSourceAdapter,从而实现对JMX的支持.
+
+MetricsSourceAdapter是继承了DynamicMBean,在调用MetricsSourceAdapter的start方法时候向getPlatformMBeanServer注册.
+它是一个dynamic MBean,通过实现了getAttribute/getAttributes接口来对外提供JMX入口.其次Metric系统和JMX的区别在不需要对外提供操作的接口和set接口,
+因此setAttribute/setAttributes/invoke的接口的实现都是抛出异常来实现.
+
+参考getAttribute的实现.
+
+        public Object getAttribute(String attribute)
+              throws AttributeNotFoundException, MBeanException, ReflectionException {
+            updateJmxCache();
+            synchronized(this) {
+              Attribute a = attrCache.get(attribute);
+              if (a == null) {
+                throw new AttributeNotFoundException(attribute +" not found");
+              }
+              if (LOG.isDebugEnabled()) {
+                LOG.debug(attribute +": "+ a);
+              }
+              return a.getValue();
+            }
+         }
+ 在MetricsSourceAdapter内部维持了一个JmxCache,在jmxCacheTTL的TTL时间内,多次调用getAttribute不会真正的执行一次Source的getMetrics的接口,从而有效的控制
+ getMetrics的调用次数. 具体cache的维护我这里就不描述了,控制的挺复杂的.
+ 
+ 
+ 总结:Metric V2在很多地方的设计上都很值得学习,特别是对外接口,可以很简单的实现Source和Sink就可以实现新的模块的metric的监控.
+ 
+ 
+ 
+ 
