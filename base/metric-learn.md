@@ -229,7 +229,7 @@ MetricSink接口很简单:
 通过MetricsSystem的register接口可以将一个MetricSink进行注册,从而在System的计数器定时调度过程中,将收集到record进行持久化输出.与Metric v1不同,一个System
 可以注册多个MetricSink,从而实现将同一条metric-record记录输出到多个端.
 
-### 异步化MetricsSink
+#### 异步化MetricsSink
 上面谈到MetricsSink,它putMetrics方法接受一个MetricRecord并进行输出,但是在真实的生成环境,有些MetricsSink完成一次record的sink操作耗时很长,此时就会造成System堵塞,
 不过我们的MetricSink的实现者,可以在putMetrics实现时候维持一个异步化队列,从而避免了System的堵塞.
 
@@ -248,7 +248,7 @@ MetricsSinkAdapter的封装是用户不感知的,一切都是由MetricsSystem自
         }
 用户实现MetricsSink,是不需要考虑任何异步和同步的问题.
 
-### MetricsSystem的分析
+#### MetricsSystem的分析
 在前面章节,我们已经多次谈到MetricsSystem.在metric v1中,MetricContext充当了中控节点,接受Updater的注册,定时拉取Updater并将通过自身的接口将收集到的record进行持久化输出.  
 在metric2中,record的收集抽象为MetricSource,record的输出抽象为MetricSink,因此MetricsSystem只需要维持一个定时器定时从Source中拉取数据,并输出到Sink中.
 
@@ -267,7 +267,7 @@ MetricsSinkAdapter的封装是用户不感知的,一切都是由MetricsSystem自
           @Metric({"Publish", "Publishing stats"}) MutableStat publishStat;
           @Metric("Dropped updates by all sinks") MutableCounterLong droppedPubAll;
           
-### Metric v2对JMX的支持
+#### Metric v2对JMX的支持
 在谈及metric v1的缺陷的时候,我们谈到metric v1没有对JMX进行支持,而metric v2进行了支持.不过这个到目前为止,我们谈到的metric v2系统已经可以正常的运行.那么是在
 什么环境完成对JMX的支持呢?  
 
