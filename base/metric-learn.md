@@ -303,6 +303,12 @@ MetricsSourceAdapter是继承了DynamicMBean,在调用MetricsSourceAdapter的sta
  
  总结:Metric V2在很多地方的设计上都很值得学习,特别是对外接口,可以很简单的实现Source和Sink就可以实现新的模块的metric的监控.
  
+ ## Spark Metric系统
+ Spark的Metric的实现是基于开源的[metrics](https://github.com/dropwizard/metrics)来实现,虽然metrics本身很功能很强大,整体上很Hadoop metric2相似.
+ 特别是Sink,Source,MetricRegister的概念基本一致.这里我就不详细对metrics的实现进行剖析,重点集中在spark的metric的source和sink的解析,
+ 从而可以更加仔细的了解spark任务运行时候的状况.  
+ 
+ 
  
  
  

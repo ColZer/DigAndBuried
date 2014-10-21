@@ -101,3 +101,11 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
      具体就不写了.
 
 一切就这么简单,就可以大吞吐的将数据导入到HBase中,大幅度的减少HDFS的IO压力.  
+
+>运行过程中遇到的关于reduce提前启动的问题：  
+>在Hadoop中，mapred.reduce.slowstart.completed.maps默认配置为5%，即在Mapper运行到5%就提前启动reducer过程，之所以这样的设计的主要优点是可以提前启动
+>reducer的shuffle过程，从而并行提高reduce执行效率。  
+>但是在bulk load过程因为这个而导致性能很差，主要的原因我们hbase启动了预分区为1000，reduce的数目很多，如果预启动reducer，就会出现reducer与mapper进行资源
+>竞争的情况，从而拖累了整个job的执行。  
+>当然主要的原因是我们hadoop很穷。。。
+>

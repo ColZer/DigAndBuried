@@ -31,13 +31,12 @@ public class ToHFile {
         ImmutableBytesWritable oKey = new ImmutableBytesWritable();
         public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             KeyValueBuilder builder = new FileMetaBuilder();
-            //自定义KeyValueBuilder接口,实现getKey和getKeyValueFromRow两个方法
-            Iterator<KeyValue> keyValues = builder.getKeyValueFromRow(value.toString());
-            oKey.set(builder.getKey(value.toString()));
-            while(keyValues.hasNext()) {
-                KeyValue tmp = keyValues.next();
-                context.write(oKey, tmp);
+            byte[]  oKeyByte = builder.getKey(value.toString());
+            if(oKeyByte == null) {
+                return;
             }
+            oKey.set(oKeyByte);
+            Iterator<KeyValue> keyValues = builder.getKeyValueFromRow(value.toString());
         }
     }
 
@@ -50,6 +49,8 @@ public class ToHFile {
         String tmpPath = fileMetaPath.trim() + "_" + System.currentTimeMillis();
         Configuration conf = new Configuration();
         conf.set("hbase.zookeeper.quorum", ToHFile.zkQuorum);
+        //map与reduce的数量都较多，如果启动预启动reduce，会导致资源的竞争比较严重
+        conf.set("mapreduce.job.reduce.slowstart.completedmaps","1");
         Job job = new Job(conf);
         job.setJobName(ToHFile.class.getName());
         job.setJarByClass(ToHFile.class);
