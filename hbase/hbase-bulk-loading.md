@@ -1,6 +1,8 @@
 HBase Bulk Loading的实践
 ===
 
+> ps:文章最后谈及BulkLoad实践过程中遇到的问题。
+
 下面代码的功能启动一个mapreduce过程,将hdfs中的文件转化为符合指定table的分区的HFile,并调用LoadIncrementalHFiles将它导入到HBase已有的表中
 
         public static class ToHFileMapper 
@@ -102,10 +104,40 @@ KeyValue类型为HBase中最小数据单位,即为一个cell,它由rowKey,family
 
 一切就这么简单,就可以大吞吐的将数据导入到HBase中,大幅度的减少HDFS的IO压力.  
 
->运行过程中遇到的关于reduce提前启动的问题：  
+###运行过程中遇到的关于reduce提前启动的问题
+
 >在Hadoop中，mapred.reduce.slowstart.completed.maps默认配置为5%，即在Mapper运行到5%就提前启动reducer过程，之所以这样的设计的主要优点是可以提前启动
 >reducer的shuffle过程，从而并行提高reduce执行效率。  
 >但是在bulk load过程因为这个而导致性能很差，主要的原因我们hbase启动了预分区为1000，reduce的数目很多，如果预启动reducer，就会出现reducer与mapper进行资源
 >竞争的情况，从而拖累了整个job的执行。  
 >当然主要的原因是我们hadoop很穷。。。
 >
+
+###基于KeyValue的错误实践
+
+>上面的实现方式中，map的输出是基于<ImmutableBytesWritable, KeyValue>，因此每条记录都会有多条map io输出操作，这是一个很严重的性能问题。会导致
+>shuffle操作的负载很高，所以上面的实践是一个错误。目前我使用的HBase版本为0.94，在configureIncrementalLoad中，我们看到有这样一行代码：
+
+        if (KeyValue.class.equals(job.getMapOutputValueClass())) {
+            job.setReducerClass(KeyValueSortReducer.class);
+        } else if (Put.class.equals(job.getMapOutputValueClass())) {
+            job.setReducerClass(PutSortReducer.class);
+        } 
+        
+> 即HBase本身会针对map的value输出类型不同，而使用不同reduce，而我就傻啦吧唧了使用了第一种KeyValueSortReducer.class。  
+>KeyValueSortReducer.class和PutSortReducer.class的区别是一个put可以由多个rowkey相同的keyvalue组成,可以很大程度上减少map输出。
+>此时的逻辑如下
+
+        public void map(Object key, Text value, Context context) 
+        throws IOException, InterruptedException {
+            KeyValueBuilder builder = new FileMetaBuilder();
+            Put put = builder.getPutFromRow(value.toString());
+            if(put == null){
+                return;
+            }
+            oKey.set(put.getRow());
+            context.write(oKey,put);
+        }
+        //并配置job的map的key和value类型
+        job.setMapOutputKeyClass(ImmutableBytesWritable.class);
+        job.setMapOutputValueClass(Put.class);
