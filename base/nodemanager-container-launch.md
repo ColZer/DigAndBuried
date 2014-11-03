@@ -124,3 +124,119 @@ container调度起来之前所做的事情做一个详细的描述：
          2>/home/data/dataplatform/log/hadoop/yarn/userlogs/application_1413959353312_0110/container_1413959353312_0110_01_000705/stderr "
          
 ###org.apache.hadoop.yarn.server.nodemanager.ContainerExecutor
+ContainerExecutor类在nodemanager的根包下面，第一次阅读NodeManager源码，就误以为它充当上文提到的ContainerLaunch角色。   
+经过对NodeManager里面的角色进行梳理，ContainerExecutor和ContainerLaunch最大的确定是，ContainerExecutor在NodeManager是一个全局的对象，
+整个NodeManager中只有一个ContainerExecutor，在NodeManager的serviceInit中进行初始化。而ContainerLaunch是一个线程，针对每个Container都会新建一个对象。
+
+既然ContainerExecutor是NodeManager中全局对象，那么它肯定掌握了一些NodeManager中的全局信息。没错，参考如下：
+        
+          private ConcurrentMap<ContainerId, Path> pidFiles =new ConcurrentHashMap<ContainerId, Path>();
+          protected boolean isContainerActive(ContainerId containerId) {
+            try {
+              readLock.lock();
+              return (this.pidFiles.containsKey(containerId));
+            } finally {
+              readLock.unlock();
+            }
+          }
+          public void activateContainer(ContainerId containerId, Path pidFilePath) {
+            try {
+              writeLock.lock();
+              this.pidFiles.put(containerId, pidFilePath);
+            } finally {
+              writeLock.unlock();
+            }
+          }
+          public void deactivateContainer(ContainerId containerId) {
+            try {
+              writeLock.lock();
+              this.pidFiles.remove(containerId);
+            } finally {
+              writeLock.unlock();
+            }
+          }
+          
+ContainerExecutor全局维护了当前NodeManager所有处于Active状态的container，并关联每个运行中的container的pidFiles。
+提供pidFile，我们可以通过ContainerExecutor的reacquireContainer来监控指定的container是否运行结束。
+
+除了维护当前NodeManager中所有container的pidFile以外，ContainerExecutor最重要的两个功能是“资源的加载清理”和"container的进程启停"。
+针对资源的加载和清理，后面再详细讨论，这里我们核心针对container的进程启停进行讨论。
+
+在上面讨论的ContainerLaunch中，ContainerLaunch负责生成container的运行脚本等基础信息在NodeManager的nmprivate目录下面，但是将这些信息
+复制到container的pwd目录中，并通过什么样的方式进行container进程调度起来则由ContainerLaunch请求ContainerExecutor来实现。  
+
+特别是进程运行方式，不同的ContainerExecutor实现有不同的方式。比如默认的DefaultContainerExecutor和LinuxContainerExecutor，LinuxContainerExecutor
+可以在指定的cgroup中启动container进程，而DefaultContainerExecutor仅仅通过传统的方式来启动进程。
+
+不过这里我们不会详细的讨论不同的ContainerExecutor的实现，我们以DefaultContainerExecutor的例子来进一步分析一个container进程怎么被调度起来。
+
+回到ContainerLaunch的实现，在ContainerLaunch完成对container的初始化以后，首先通过activateContainer在ContainerExecutor中将该容器进行激活，
+然后将刚刚生成的scriptPath，tokenPath，localDir，logDirs以及pwd等container环境文件和目录传递给launchContainer，并堵塞线程的执行，直到launchContainer
+完成container的进程的启动和运行，并返回container的进程返回错误码。
+
+        exec.activateContainer(containerID, pidFilePath);
+        ret = exec.launchContainer(container, nmPrivateContainerScriptPath,
+                nmPrivateTokensPath, user, appIdStr, containerWorkDir,
+                localDirs, logDirs);
+launchContainer所做的工作主要有三件事：
+
++   初始化container的pwd目录，将token/script等path复制到pwd中。
++   container的进程脚本的生成。
++   启动container的进程脚本并等待进程运行结束。
+
+第一件事情很简单，我们这里就不详细阐述了。但是第二件事就是要讲一下。在ContainerLaunch线程中，我们已经生成了一个launch_container.sh文件的脚本文件
+那么在ContainerExecutor还生成什么脚本呢？其实真正的功能脚本就是ContainerLaunch中生成的launch_container.sh，在ContainerExecutor是对launch_container.sh进行包装。
+
+具体描述如下：
+
++   在launch_container.sh脚本外包围一个default_container_executor_session.sh脚本。用于将container进程的pid写入到pidfile中。
+由于采用的exec的方式来运行launch_container.sh，进程的pid是不改变
+        
+        #default_container_executor_session.sh
+        #!/bin/bash        
+        echo $$ > pidfile.tmp
+        /bin/mv -f pidfile.tmp pidfile
+        exec setsid /bin/bash "launch_container.sh"
++   在default_container_executor_session.sh外部包围一个default_container_executor.sh。但是default_container_executor.sh不是通过exec的方式来启动
+default_container_executor_session.sh脚本。所以整个container是由两个进程组成，一个default_container_executor.sh和launch_container.sh组成
+
+        #default_container_executor.sh
+        #!/bin/bash
+        /bin/bash "default_container_executor_session.sh"
+        rc=$?
+        echo $rc > tmpfile
+        /bin/mv -f tmpfile pidfile.exitcode
+        exit $rc
+default_container_executor.sh进程由于将default_container_executor_session.sh进程执行退出码写到exitcode文件中。
+
+完成了default_container_executor.sh脚本的生成，ContainerExecutor后面的工作就比较简单，直接调度起来并等待进程退出。
+
+同时ContainerExecutor拥有所有启动container的pid文件，向指定进程的pid发送kill -9/kill -0等信号可以进程container的探活以及杀死。具体就不描述了。
+
+
+#org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.ContainersLauncher
+上面谈到了ContainerLaunch，它是一个继承了Call的线程对象，对ContainerLaunch线程进行调度是由ContainersLauncher来负责。ContainersLauncher是
+ContainerManager中一个service模块。
+
+首先它负责containerLaunch线程的调度，那么它内部肯定有一个线程池。
+
+        public ExecutorService containerLauncher =
+            Executors.newCachedThreadPool(
+                new ThreadFactoryBuilder().setNameFormat("ContainersLauncher #%d").build());
+                
+其次，它是一个service，被注册了ContainersLauncherEventType.class的Event
+        
+        dispatcher.register(ContainersLauncherEventType.class, containersLauncher);
+    
+该Event包括三类事件：
+
++   LAUNCH_CONTAINER：接受来自ContainerManager中启动一个container的事件，ContainersLauncher负责创建一个ContainerLaunch线程，并交由线程池
+进行调度。
++   RECOVER_CONTAINER：container的恢复，这里就不详说了。后面再分析。
++   CLEANUP_CONTAINER：container的清理。杀死当前运行的container，以及对临时文件的清理。
+
+总结：到目前为止，我们已经针对每个container生成一个ContainerLaunch线程，到调用ContainerExecutor来实现container进程进程的调度，已经走通了
+container进程启动和结束错误码的收集。至于说ContainersLauncher什么时候被event来启动一个containerLaunch进程，
+需要对container的资源本地化进行分析以后再能描述清楚。也是下一个计划
+
+end。
