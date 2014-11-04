@@ -64,55 +64,55 @@ smaps文件是在Linux内核 2.6.16中引入了进程内存接口，它相比sta
 求出所有的内存和。因此通过smaps来获取rss的复杂度比stat文件要高。  
 下面为一个内存段的信息。
 
-        00400000-00401000 r-xp 00000000 08:07 131577                             /home/work/opt/jdk1.7/bin/java
-        //00400000-00401000表示该虚拟内存段的开始和结束位置。
-        //00000000 该虚拟内存段在对应的映射文件中的偏移量，                                                  
-        //08:07 映射文件的主设备和次设备号
-        //131577 被映射到虚拟内存的文件的索引节点号
-        //home/work/opt/jdk1.7/bin/java为被映射到虚拟内存的文件名称
-        // r-xp为虚拟内存段的权限信息，其中第四个字段表示该端是私有的:p，还是共享的:s
-        
-        //进程使用内存空间，并不一定实际分配了内存(VSS)
-        Size:                  4 kB
-        //实际分配的内存(不需要缺页中断就可以使用的)
-        Rss:                   4 kB
-        //是平摊共享内存而计算后的使用内存(有些内存会和其他进程共享，例如mmap进来的)
-        Pss:                   4 kB
-        //和其他进程共享的未改写页面
-        Shared_Clean:          0 kB
-        //和其他进程共享的已改写页面
-        Shared_Dirty:          0 kB
-        //未改写的私有页面页面
-        Private_Clean:         4 kB
-        //已改写的私有页面页面
-        Private_Dirty:         0 kB
-        //标记为已经访问的内存大小
-        Referenced:            4 kB
-        Anonymous:             0 kB
-        AnonHugePages:         0 kB
-        //存在于交换分区的数据大小(如果物理内存有限，可能存在一部分在主存一部分在交换分区)
-        Swap:                  0 kB
-        //内核页大小 
-        KernelPageSize:        4 kB
-        //MMU页大小，基本和Kernel页大小相同
-        MMUPageSize:           4 kB
-        Locked:                0 kB
-        VmFlags: rd ex mr mw me dw sd 
+    00400000-00401000 r-xp 00000000 08:07 131577                             /home/work/opt/jdk1.7/bin/java
+    //00400000-00401000表示该虚拟内存段的开始和结束位置。
+    //00000000 该虚拟内存段在对应的映射文件中的偏移量，                                                  
+    //08:07 映射文件的主设备和次设备号
+    //131577 被映射到虚拟内存的文件的索引节点号
+    //home/work/opt/jdk1.7/bin/java为被映射到虚拟内存的文件名称
+    // r-xp为虚拟内存段的权限信息，其中第四个字段表示该端是私有的:p，还是共享的:s
+    
+    //进程使用内存空间，并不一定实际分配了内存(VSS)
+    Size:                  4 kB
+    //实际分配的内存(不需要缺页中断就可以使用的)
+    Rss:                   4 kB
+    //是平摊共享内存而计算后的使用内存(有些内存会和其他进程共享，例如mmap进来的)
+    Pss:                   4 kB
+    //和其他进程共享的未改写页面
+    Shared_Clean:          0 kB
+    //和其他进程共享的已改写页面
+    Shared_Dirty:          0 kB
+    //未改写的私有页面页面
+    Private_Clean:         4 kB
+    //已改写的私有页面页面
+    Private_Dirty:         0 kB
+    //标记为已经访问的内存大小
+    Referenced:            4 kB
+    Anonymous:             0 kB
+    AnonHugePages:         0 kB
+    //存在于交换分区的数据大小(如果物理内存有限，可能存在一部分在主存一部分在交换分区)
+    Swap:                  0 kB
+    //内核页大小 
+    KernelPageSize:        4 kB
+    //MMU页大小，基本和Kernel页大小相同
+    MMUPageSize:           4 kB
+    Locked:                0 kB
+    VmFlags: rd ex mr mw me dw sd 
           
 在NodeManager中，每个进程的内存段也由这几部分组成，参考ProcessSmapMemoryInfo的实现
         
-          static class ProcessSmapMemoryInfo {
-                private int size;
-                private int rss;
-                private int pss;
-                private int sharedClean;
-                private int sharedDirty;
-                private int privateClean;
-                private int privateDirty;
-                private int referenced;
-                private String regionName;
-                private String permission;
-           }
+      static class ProcessSmapMemoryInfo {
+            private int size;
+            private int rss;
+            private int pss;
+            private int sharedClean;
+            private int sharedDirty;
+            private int privateClean;
+            private int privateDirty;
+            private int referenced;
+            private String regionName;
+            private String permission;
+       }
            
 计算整个进程树的RSS，并不是简单的将所有rss相加，而是有一个计算规则。
 
@@ -123,11 +123,11 @@ smaps文件是在Linux内核 2.6.16中引入了进程内存接口，它相比sta
 
 另外上述获取的RSS内存大小的大小都为pagesize，比如，超过内存被container-monitor杀死的日志：
     
-        Container [pid=21831,containerID=container_1403615898540_0028_01_000044] is running beyond physical memory limits. 
-        Current usage: 1.0 GB of 1 GB physical memory used; 1.9 GB of 3 GB virtual memory used. Killing container.
-        Dump of the process-tree for container_1403615898540_0028_01_000044 :
-        |- PID PPID PGRPID SESSID CMD_NAME USER_MODE_TIME(MILLIS) SYSTEM_TIME(MILLIS) VMEM_USAGE(BYTES) RSSMEM_USAGE(PAGES) FULL_CMD_LINE
-        |- 21837 21831 21831 21831 (java) 2111 116 1981988864 263056 java
+    Container [pid=21831,containerID=container_1403615898540_0028_01_000044] is running beyond physical memory limits. 
+    Current usage: 1.0 GB of 1 GB physical memory used; 1.9 GB of 3 GB virtual memory used. Killing container.
+    Dump of the process-tree for container_1403615898540_0028_01_000044 :
+    |- PID PPID PGRPID SESSID CMD_NAME USER_MODE_TIME(MILLIS) SYSTEM_TIME(MILLIS) VMEM_USAGE(BYTES) RSSMEM_USAGE(PAGES) FULL_CMD_LINE
+    |- 21837 21831 21831 21831 (java) 2111 116 1981988864 263056 java
         
 打印的进程rss大小为263056，而该机器的页大小为4098，那么实际内存大小为1027m。
 
@@ -155,27 +155,27 @@ smaps文件是在Linux内核 2.6.16中引入了进程内存接口，它相比sta
 慢！！！还有一个逻辑很重要，container是基于进程了来调度，创建子进程采用了“fork()+exec()”的方案，子进程启动的瞬间，
 它使用的内存量和父进程一致。一个进程使用的内存量可能瞬间翻倍，因此需要对进程进行"age"区分。参考如下代码：
 
-        //其中curMemUsageOfAgedProcesses为age>0的进程占用内存大小，而currentMemUsage不区分age年龄大小
-        boolean isProcessTreeOverLimit(String containerId,
-                                          long currentMemUsage,
-                                          long curMemUsageOfAgedProcesses,
-                                          long vmemLimit) {
-            boolean isOverLimit = false;
-        
-            if (currentMemUsage > (2 * vmemLimit)) {
-              LOG.warn("Process tree for container: " + containerId
-                  + " running over twice " + "the configured limit. Limit=" + vmemLimit
-                  + ", current usage = " + currentMemUsage);
-              isOverLimit = true;
-            } else if (curMemUsageOfAgedProcesses > vmemLimit) {
-              LOG.warn("Process tree for container: " + containerId
-                  + " has processes older than 1 "
-                  + "iteration running over the configured limit. Limit=" + vmemLimit
-                  + ", current usage = " + curMemUsageOfAgedProcesses);
-              isOverLimit = true;
-            }
-        
-            return isOverLimit;
-         }
+    //其中curMemUsageOfAgedProcesses为age>0的进程占用内存大小，而currentMemUsage不区分age年龄大小
+    boolean isProcessTreeOverLimit(String containerId,
+                                      long currentMemUsage,
+                                      long curMemUsageOfAgedProcesses,
+                                      long vmemLimit) {
+        boolean isOverLimit = false;
+    
+        if (currentMemUsage > (2 * vmemLimit)) {
+          LOG.warn("Process tree for container: " + containerId
+              + " running over twice " + "the configured limit. Limit=" + vmemLimit
+              + ", current usage = " + currentMemUsage);
+          isOverLimit = true;
+        } else if (curMemUsageOfAgedProcesses > vmemLimit) {
+          LOG.warn("Process tree for container: " + containerId
+              + " has processes older than 1 "
+              + "iteration running over the configured limit. Limit=" + vmemLimit
+              + ", current usage = " + curMemUsageOfAgedProcesses);
+          isOverLimit = true;
+        }
+    
+        return isOverLimit;
+     }
 
 通过该逻辑，可以避免因为进程新启动瞬间占用的内存翻倍，导致进程被kill的风险。

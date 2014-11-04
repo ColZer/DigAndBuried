@@ -75,20 +75,20 @@ Hadoop metric在代码实现上有两个版本,分别位于org.apache.hadoop.met
 由recordName+tagMap+metricTable就组成了一条metric记录,它反应一个recordName统计对象在特定的tag环境下面,每个统计项的统计值.   
 上面我们对metric的逻辑结构进行分析,其实它就是MetricsRecord类的实现.
 
-        public class MetricsRecordImpl implements MetricsRecord {
-            private TagMap tagTable = new TagMap();
-            private Map<String,MetricValue> metricTable = new LinkedHashMap<String,MetricValue>();
-            private String recordName;
-            private AbstractMetricsContext context;        
-        ....
+    public class MetricsRecordImpl implements MetricsRecord {
+        private TagMap tagTable = new TagMap();
+        private Map<String,MetricValue> metricTable = new LinkedHashMap<String,MetricValue>();
+        private String recordName;
+        private AbstractMetricsContext context;        
+    ....
 
 每个recordName都需要一个实体对象去和业务代码交互,读取业务代码运行过程中各种运行时信息,并把这些运行时的信息转化metric记录.  
 同时该实体对象需要对外提供接口,定时的从中获取一条当前的metric记录.  
 在metric v1中,该实体对象就是一个实现Updater接口的对象,该接口只有一个函数doUpdates,每次实体对象的该函数被调用,就需要向对方返回一条metric记录.
 
-        public interface Updater {
-          public abstract void doUpdates(MetricsContext context);        
-        }
+    public interface Updater {
+      public abstract void doUpdates(MetricsContext context);        
+    }
         
 参考ShuffleClientMetrics实体类的实现,它继承Updater接口,每次doUpdates函数被调用,就返回一条当前运行shuffle运行的统计数据.
 
@@ -100,7 +100,7 @@ MetricsContext提供registerUpdater/unregisterUpdater接口,从而接受Updator�
 
 MetricContext的创建,依赖ContextFactory,该工厂类在初始化时候,从hadoop配置文件目录中读取hadoop-metrics.properties,比如针对dfs这个MetricContext配置:  
 
-        dfs.class=org.apache.hadoop.metrics.file.FileContext  
+    dfs.class=org.apache.hadoop.metrics.file.FileContext  
 
 那么我们就可以通过ContextFactory.getContext("dfs");获取一个FileContext对象,从而可以把从每个Updater中收集到metric信息写到文件中.
 
@@ -122,12 +122,12 @@ Metric2在设计上比Metric1要复杂多了,下面我们一点点的剖析.
 
 MutableMetric对外提供一个metric"到目前为止是否改变"的语义和改变这个语义的接口,另外针对一个metric值提供一个返回当前快照的snapshot接口
 
-        public void snapshot(MetricsRecordBuilder builder, boolean all) {
-            if (all || changed()) {
-              builder.addGauge(info(), value);
-              clearChanged();
-            }
+    public void snapshot(MetricsRecordBuilder builder, boolean all) {
+        if (all || changed()) {
+          builder.addGauge(info(), value);
+          clearChanged();
         }
+    }
 
 当一个MutableMetric的snapshot方法被调用,内部会判断从上一次快照到现在,metric的值是否被改变,如果没有改变,那么就不会返回任何信息,否则会将当前改变的值
 写到参数MetricsRecordBuilder中,并清除当前的改变.
@@ -142,9 +142,9 @@ MutableMetric对外提供一个metric"到目前为止是否改变"的语义和�
 在metric v1中,一个Updater表示一个数据源,对外提供doUpdates接口向外部反馈一条metric record记录.而在metric v2中,updater抽象为MetricsSource,和updater一样,
 对外提供getMetrics接口.
 
-        public interface MetricsSource {
-          void getMetrics(MetricsCollector collector, boolean all);
-        }
+    public interface MetricsSource {
+      void getMetrics(MetricsCollector collector, boolean all);
+    }
         
 任何想被监控的metric信息都需要继承MetricSource接口,并实现getMetrics方法.在metric2中,MetricSource的实现是一大亮点,
 在详细讲解这个实现之前我们想看一个类:MetricsRegistry
@@ -155,33 +155,36 @@ MetricsRegistry在source中充当record的生成器,它提供了一条record的t
 一个source里面定义一个MutableGaugeInt变量来表示我们对外反馈一个Int的metric信息,注意这里说的是定义,没有对这个变量指向对象的分配(new),
 对这个变量的分配,我们需要调用source内部的MetricsRegistry的newGauge(MetricsInfo info, int iVal) 函数进入分配,看一下这个函数的源码:
 
-        public synchronized MutableGaugeInt newGauge(MetricsInfo info, int iVal) {
-            checkMetricName(info.name());
-            MutableGaugeInt ret = new MutableGaugeInt(info, iVal);
-            metricsMap.put(info.name(), ret);
-            return ret;
-        }
+    public synchronized MutableGaugeInt newGauge(MetricsInfo info, int iVal) {
+        checkMetricName(info.name());
+        MutableGaugeInt ret = new MutableGaugeInt(info, iVal);
+        metricsMap.put(info.name(), ret);
+        return ret;
+    }
+    
 看这个函数的源码我们知道,它在内部做了对象的初始化,返回一个对象引用,并把该对象添加到MetricsRegistry内部的一个metricsMap中,对于tag也一样,MetricsRegistry
 内部有一个tagsMap.这里MetricsRegistry就相当于维护一个source内部metric和tag对象的注册表,通过MetricsRegistry内部的snapshot,我们就可以返回一条当前record的镜像.
 
-        public synchronized void snapshot(MetricsRecordBuilder builder, boolean all) {
-            for (MetricsTag tag : tags()) {
-              builder.add(tag);
-            }
-            for (MutableMetric metric : metrics()) {
-              metric.snapshot(builder, all);
-            }
+    public synchronized void snapshot(MetricsRecordBuilder builder, boolean all) {
+        for (MetricsTag tag : tags()) {
+          builder.add(tag);
         }
+        for (MutableMetric metric : metrics()) {
+          metric.snapshot(builder, all);
+        }
+    }
+    
 到目前为止,我们还没有看到MetricsRegistry在Source中的作用,只是把一个简单new过程复杂为一个函数调用.病提供一个snapshot函数简化record的构建.  
 
 但是Source的设计亮点在处于可以直接省略掉newGauge之类的方法的调用,通过属性Field的标注来设置metric的属性以及自动进行初始化.
 参考一个例子:
 
-        @Metrics(context="yarn")
-        public class QueueMetrics implements MetricsSource {
-          @Metric("# of apps submitted") MutableCounterInt appsSubmitted;
-          @Metric({"Snapshot", "Snapshot stats"}) MutableStat snapshotStat;
-        }
+    @Metrics(context="yarn")
+    public class QueueMetrics implements MetricsSource {
+      @Metric("# of apps submitted") MutableCounterInt appsSubmitted;
+      @Metric({"Snapshot", "Snapshot stats"}) MutableStat snapshotStat;
+    }
+    
 对于QueueMetrics,通过对appsSubmitted和snapshotStat两个MutableMetric进行@Metric标注,系统会自动对两个metric进行初始化,并设置metric的name和description.
 在QueueMetrics中不需要对appsSubmitted进行初始化,就可以直接进行赋值. 
 
@@ -191,22 +194,24 @@ MetricsRegistry在source中充当record的生成器,它提供了一条record的t
 
 话说这一系列是怎么实现的?它有一个前提就是该source必须被注册到到MetricsSystem中,MetricsSystem和metric v1的context概念一致,通过调用register函数来进行注册.
 
-        @Override public synchronized <T>
-        T register(String name, String desc, T source) {
-            MetricsSourceBuilder sb = MetricsAnnotations.newSourceBuilder(source);
-            final MetricsSource s = sb.build();
-            MetricsInfo si = sb.info();
-            ...
-        }
+    @Override public synchronized <T>
+    T register(String name, String desc, T source) {
+        MetricsSourceBuilder sb = MetricsAnnotations.newSourceBuilder(source);
+        final MetricsSource s = sb.build();
+        MetricsInfo si = sb.info();
+        ...
+    }
+    
 在register函数内部调用MetricsSourceBuilder sb = MetricsAnnotations.newSourceBuilder(source)对原始的source进行封装,并build出一个初始化以后的MetricsSource.
 具体MetricsSourceBuilder我就不写出来,逻辑还是比较简单,从事的工作就是对所有@Metric标注的metric变量在source的MetricsRegistry进行初始化,并设置引用到变量上.
 
 另外因为MetricsRegistry的存在,任何在source中对metric变量的修改都会反应到MetricsRegistry内部变量的改变,通过基于MetricsRegistry内部的snapshot接口,
 实现MetricsSource的getMetrics接口会显得十分简单,比如:
 
-        public synchronized void getMetrics(MetricsCollector collector, boolean all) {
-            registry.snapshot(collector.addRecord(registry.info()), all);
-        }
+    public synchronized void getMetrics(MetricsCollector collector, boolean all) {
+        registry.snapshot(collector.addRecord(registry.info()), all);
+    }
+    
 一切是不是如此简单!
 
 #### MetricsSink
@@ -214,18 +219,19 @@ MetricsRegistry在source中充当record的生成器,它提供了一条record的t
 MetricSink类,和MetricSource的概念相对应,一个用于metric信息的收集,一个用于metric信息的持久化输出.   
 MetricSink接口很简单:
 
-        public interface MetricsSink extends MetricsPlugin {
-          /**
-           * Put a metrics record in the sink
-           * @param record  the record to put
-           */
-          void putMetrics(MetricsRecord record);
-        
-          /**
-           * Flush any buffered metrics
-           */
-          void flush();
-        }
+    public interface MetricsSink extends MetricsPlugin {
+      /**
+       * Put a metrics record in the sink
+       * @param record  the record to put
+       */
+      void putMetrics(MetricsRecord record);
+    
+      /**
+       * Flush any buffered metrics
+       */
+      void flush();
+    }
+    
 通过MetricsSystem的register接口可以将一个MetricSink进行注册,从而在System的计数器定时调度过程中,将收集到record进行持久化输出.与Metric v1不同,一个System
 可以注册多个MetricSink,从而实现将同一条metric-record记录输出到多个端.
 
@@ -238,14 +244,15 @@ MetricSink接口很简单:
 
 MetricsSinkAdapter的封装是用户不感知的,一切都是由MetricsSystem自己进行操作,参考MetricsSystem的register接口的实现:
         
-        synchronized void registerSink(String name, String desc, MetricsSink sink) {
-            checkNotNull(config, "config");
-            MetricsConfig conf = sinkConfigs.get(name);
-            MetricsSinkAdapter sa = conf != null? newSink(name, desc, sink, conf) : newSink(name, desc, sink, config.subset(SINK_KEY));
-            sinks.put(name, sa);
-            sa.start();
-            LOG.info("Registered sink "+ name);
-        }
+    synchronized void registerSink(String name, String desc, MetricsSink sink) {
+        checkNotNull(config, "config");
+        MetricsConfig conf = sinkConfigs.get(name);
+        MetricsSinkAdapter sa = conf != null? newSink(name, desc, sink, conf) : newSink(name, desc, sink, config.subset(SINK_KEY));
+        sinks.put(name, sa);
+        sa.start();
+        LOG.info("Registered sink "+ name);
+    }
+    
 用户实现MetricsSink,是不需要考虑任何异步和同步的问题.
 
 #### MetricsSystem的分析
@@ -259,14 +266,14 @@ MetricsSinkAdapter的封装是用户不感知的,一切都是由MetricsSystem自
 +   MetricSystem本身被抽象为一个MetricSource.metricSystem在运行过程中,涉及到很多metric信息,这些metric信息的观察对metricSystem运行状况的监控也很重要.  
 参考下面代码,System的source所对应的context以及metric的值.
         
-        @Metrics(context="metricssystem")
-        public class MetricsSystemImpl extends MetricsSystem implements MetricsSource {
-        
-          private final MetricsRegistry registry = new MetricsRegistry(MS_NAME);
-          @Metric({"Snapshot", "Snapshot stats"}) MutableStat snapshotStat;
-          @Metric({"Publish", "Publishing stats"}) MutableStat publishStat;
-          @Metric("Dropped updates by all sinks") MutableCounterLong droppedPubAll;
-          
+    @Metrics(context="metricssystem")
+    public class MetricsSystemImpl extends MetricsSystem implements MetricsSource {
+    
+      private final MetricsRegistry registry = new MetricsRegistry(MS_NAME);
+      @Metric({"Snapshot", "Snapshot stats"}) MutableStat snapshotStat;
+      @Metric({"Publish", "Publishing stats"}) MutableStat publishStat;
+      @Metric("Dropped updates by all sinks") MutableCounterLong droppedPubAll;
+      
 #### Metric v2对JMX的支持
 在谈及metric v1的缺陷的时候,我们谈到metric v1没有对JMX进行支持,而metric v2进行了支持.不过这个到目前为止,我们谈到的metric v2系统已经可以正常的运行.那么是在
 什么环境完成对JMX的支持呢?  
@@ -283,20 +290,21 @@ MetricsSourceAdapter是继承了DynamicMBean,在调用MetricsSourceAdapter的sta
 
 参考getAttribute的实现.
 
-        public Object getAttribute(String attribute)
-              throws AttributeNotFoundException, MBeanException, ReflectionException {
-            updateJmxCache();
-            synchronized(this) {
-              Attribute a = attrCache.get(attribute);
-              if (a == null) {
-                throw new AttributeNotFoundException(attribute +" not found");
-              }
-              if (LOG.isDebugEnabled()) {
-                LOG.debug(attribute +": "+ a);
-              }
-              return a.getValue();
-            }
-         }
+    public Object getAttribute(String attribute)
+          throws AttributeNotFoundException, MBeanException, ReflectionException {
+        updateJmxCache();
+        synchronized(this) {
+          Attribute a = attrCache.get(attribute);
+          if (a == null) {
+            throw new AttributeNotFoundException(attribute +" not found");
+          }
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(attribute +": "+ a);
+          }
+          return a.getValue();
+        }
+     }
+     
  在MetricsSourceAdapter内部维持了一个JmxCache,在jmxCacheTTL的TTL时间内,多次调用getAttribute不会真正的执行一次Source的getMetrics的接口,从而有效的控制
  getMetrics的调用次数. 具体cache的维护我这里就不描述了,控制的挺复杂的.
  
