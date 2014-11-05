@@ -61,7 +61,7 @@ LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意�
 +   开始埋坑日期:2014-11-2
 +   坑状态:done
 
-### NodeManager解析系列四：与ResourceManager的交互(./hadoop/nodemanager-container-withrm.md)
+### [NodeManager解析系列四：与ResourceManager的交互](./hadoop/nodemanager-container-withrm.md)
 在yarn模型中，NodeManager充当着slave的角色，与ResourceManager注册并提供了Containner服务。前面几部分核心分析NodeManager所提供的
 Containner服务，本节我们就NodeManager与ResourceManager交互进行分析。从逻辑上说，这块比Containner服务要简单很多。
 
