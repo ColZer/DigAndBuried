@@ -38,7 +38,7 @@ Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们
 +   开始埋坑日期:2014-10-15
 +   坑状态:done
 
-##   [NodeManager解析系列一：内存Monitor解析](./hadoop/nodemanager-container-monitor.md)
+##   [NodeManager解析系列一：内存Monitor分析](./hadoop/nodemanager-container-monitor.md)
 用过MapReduce都遇到因为task使用内存过多，导致container被kill，然后通过网上来找资料来设置mapreduce.map.memory.mb/mapreduce.reduce.memory.mb
 /mapreduce.map.java.opts/mapreduce.reduce.java.opts来解决问题。但是对于内部实现我们还是不清楚，这篇文章就是来解析NodeManager怎么
 对container的内存使用进行Monitor
@@ -53,7 +53,7 @@ Hadoop里面模块很多，为什么我优先对NodeManager进行解析呢？因
 +   开始埋坑日期:2014-11-2
 +   坑状态:done
 
-##   [NodeManager解析系列三：Container Localization的研究](./hadoop/nodemanager-container-localizer.md)
+##   [NodeManager解析系列三：Localization的分析](./hadoop/nodemanager-container-localizer.md)
 任何一个阅读过NodeManager源码的人都被Localization弄得晕头转向的，从LocalResource，LocalizedResource，LocalResourcesTracker，
 LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意就搞糊涂了，这篇文章对Localization进行分析，从个人感受来看，对Localization
 理解透了，基本上NodeManager都理解差不多了
