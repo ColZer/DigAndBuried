@@ -220,7 +220,373 @@ LocalizationEventType.INIT_CONTAINER_RESOURCES的ContainerLocalizationRequestEve
 总结：我们针对Application的初始化和Container的初始化来解析LocalResourcesTracker初始化工作，到目前为止，我们已经将App需要进行Localization的Resource
 从Container层面传递到LocalizationService，下面我们需要解析的就是LocalizationService如果利用LocalResourcesTracker来完成每个资源的Localization工作。
 
+## LocalResourcesTracker是如何对其中每个LocalResource进行Localization
+在上面部分，我们将一个需要被Localizer的资源从Container的StartContainerRequest走到LocalResourcesTracker，下面我们就来分析LocalResourcesTracker怎么进行
+Resource的Localizer的。
 
+如上所言，在LocalResourcesTracker中，将每个资源表示为一个LocalizedResource，并与LocalResourceRequest一一关联，ResourceLocalizationService通过
+LocalResourcesTracker的Handle接口，将资源封装为一个ResourceRequestEvent发送到LocalResourcesTracker，下面我们来看handle接口的逻辑：
 
+    public synchronized void handle(ResourceEvent event) {
+        LocalResourceRequest req = event.getLocalResourceRequest();
+        LocalizedResource rsrc = localrsrc.get(req);
+        switch (event.getType()) {
+        case REQUEST:
+          if (rsrc != null && (!isResourcePresent(rsrc))) {
+            removeResource(req);
+            rsrc = null;
+          }
+          if (null == rsrc) {
+            rsrc = new LocalizedResource(req, dispatcher);
+            localrsrc.put(req, rsrc);
+          }
+          break;
+        }    
+        rsrc.handle(event);
+      }
 
+删除Handle函数中其他event.type的操作，只目前只对REQUEST进行分析。我们看到LocalResourcesTracker首先通过isResourcePresent判读指定Resource
+是否已经被localizer到本地，如果没有，那么就成为该资源创建一个LocalizedResource对象，并将事件转交给Resource相对应的LocalizedResource对象处理。
 
+从上面我们看到LocalResourcesTracker在上层为所有需要被Localizer的Resource维护一个LocalResourceRequest和LocalizedResource之间的索引而已。具体的Resource
+的Localizer过程由LocalizedResource自己进行驱动。
+
+下面我们的流程就走到分析LocalizedResource。  
+LocalizedResource是一个状态机，维护了资源了INIT/DOWNLOADING/LOCALIZED/FAILED等状态。
+
++   当LocalResourcesTracker在处理REQUEST事件时候，会创建一个 LocalizedResource，处于INIT状态。创建后LocalResourcesTracker会将REQUEST事件转交给LocalizedResource
++   LocalizedResource处理REQUEST是由FetchResourceTransition来完成。
+        
+        private static class FetchResourceTransition extends ResourceTransition {
+            @Override
+            public void transition(LocalizedResource rsrc, ResourceEvent event) {
+              ResourceRequestEvent req = (ResourceRequestEvent) event;
+              LocalizerContext ctxt = req.getContext();
+              ContainerId container = ctxt.getContainerId();
+              rsrc.ref.add(container);
+              rsrc.dispatcher.getEventHandler().handle(
+                  new LocalizerResourceRequestEvent(rsrc, req.getVisibility(), ctxt, 
+                      req.getLocalResourceRequest().getPattern()));
+            }
+         }
+
++   LocalizedResource在内部维护了每个Resource与container之间的关联关系，同时在处理REQUEST会将Localizer操作封装为LocalizerResourceRequestEvent发送到LocalizationService中
++   LocalizerResourceRequestEvent的事件被“特定组件”所接受，完成文件Localizer以后，会向LocalizedResource发送一个ResourceLocalizedEvent，告知Resource被Localizer。
+并由FetchSuccessTransition进行处理：
+
+          private static class FetchSuccessTransition extends ResourceTransition {
+            @Override
+            public void transition(LocalizedResource rsrc, ResourceEvent event) {
+              ResourceLocalizedEvent locEvent = (ResourceLocalizedEvent) event;
+              rsrc.localPath =
+                  Path.getPathWithoutSchemeAndAuthority(locEvent.getLocation());
+              rsrc.size = locEvent.getSize();
+              for (ContainerId container : rsrc.ref) {
+                rsrc.dispatcher.getEventHandler().handle(
+                    new ContainerResourceLocalizedEvent(
+                      container, rsrc.rsrc, rsrc.localPath));
+              }
+            }
+          }
+      
++   LocalizedResource会在资源已经Localizer以后，会以ContainerResourceLocalizedEvent事件的方式通知所有等待该资源的Container。
++   Container会对ContainerResourceLocalizedEvent进行处理，通过检查所有的Resource是否都已经Localizer，如果是就进行LOCALIZED并启动Container，否则继续等待。
+逻辑如下：
+        
+        static class LocalizedTransition implements
+              MultipleArcTransition<ContainerImpl,ContainerEvent,ContainerState> {
+            @Override
+            public ContainerState transition(ContainerImpl container,
+                ContainerEvent event) {
+              ContainerResourceLocalizedEvent rsrcEvent = (ContainerResourceLocalizedEvent) event;
+              List<String> syms =
+                  container.pendingResources.remove(rsrcEvent.getResource());
+              if (null == syms) {
+                LOG.warn("Localized unknown resource " + rsrcEvent.getResource() +
+                         " for container " + container.containerId);
+                assert false;
+                // fail container?
+                return ContainerState.LOCALIZING;
+              }
+              container.localizedResources.put(rsrcEvent.getLocation(), syms);
+              if (!container.pendingResources.isEmpty()) {
+                return ContainerState.LOCALIZING;
+              }
+        
+              container.sendLaunchEvent();
+              container.metrics.endInitingContainer();
+              return ContainerState.LOCALIZED;
+            }
+          }
+
+总结：到目前为止，我们已经了解了Localization请求进入LocalResourcesTracker，并被LocalizedResource并进行调度，请求“特定的组件”来完成Resource的Localizer，
+完成以后通知Container，相应的资源已经Localized成功。
+
+现在就遗留一个问题，所说的特定组件是什么东西？
+
+##什么组件处理LocalizedResource的LocalizerResourceRequestEvent并完成Resource的Local操作
+答案是LocalizerTracker，注意与LocalResourcesTracker的不同，该Tracker是Localizer操作的tracker。下面我们就来分析，LocalizerTracker是怎么来完成Localizer操作
+
+LocalizerTracker和上面一组LocalResourcesTracker一样，都是属于ResourceLocalizationService内部的组件，而且LocalizerTracker只会处理一种类型的事件，即：  
+
+    LocalizerEventType.REQUEST_RESOURCE_LOCALIZATION
+
+而上面说到LocalizerResourceRequestEvent，就是封装了REQUEST_RESOURCE_LOCALIZATION的LocalizerEvent，另外每个LocalizerEvent有一个LocalizerID，一般情况下
+该LocalizerID就是ContainerID。
+
+现在问题来了，为什么需要LocalizerEvent需要将ContainerID封装为一个LocalizerID？难道LocalizerTracker会针对每个ContainerID进行不同的处理？  
+
+答案是对的。LocalizerTracker是一个上层封装，在LocalizerTracker内部两个Localizer，如下所示：
+
+    class LocalizerTracker extends AbstractService implements EventHandler<LocalizerEvent>  {
+    
+        private final PublicLocalizer publicLocalizer;
+        private final Map<String,LocalizerRunner> privLocalizers;
+
+它们分别是一个publicLocalizer和多个privLocalizers，其中privLocalizers会为每个LocalizerID创建一个LocalizerRunner，换句话说会为每个Container创建一个LocalizerRunner。
+
+这点与上面谈到的LocalResourcesTracker很像，只是Localizer是Container为单位，而LocalResourcesTracker包含User粒度和Application粒度。
+
+在LocalizerTracker的Handler接口会根据请求的LocalizerEvent的Resource资源类型将Localization操作转交给不同的Localizer进行处理，如下所示：
+
+    public void handle(LocalizerEvent event) {
+          String locId = event.getLocalizerId();
+          switch (event.getType()) {
+          case REQUEST_RESOURCE_LOCALIZATION:
+            LocalizerResourceRequestEvent req = (LocalizerResourceRequestEvent)event;
+            switch (req.getVisibility()) {
+            case PUBLIC:
+              publicLocalizer.addResource(req);
+              break;
+            case PRIVATE:
+            case APPLICATION:
+              synchronized (privLocalizers) {
+                LocalizerRunner localizer = privLocalizers.get(locId);
+                if (null == localizer) {
+                  localizer = new LocalizerRunner(req.getContext(), locId);
+                  privLocalizers.put(locId, localizer);
+                  localizer.start();
+                }
+                // 1) propagate event
+                localizer.addResource(req);
+              }
+              break;
+            }
+            break;
+          }
+        }
+
+如果资源为APPLICATION和PRIVATE类型，而且在privLocalizers没有该ContainerID对应的LocalizerRunner，那么就会创建一个LocalizerRunner。LocalizerRunner和PublicLocalizer
+都提供了addResource接口将需要Localization的资源传递给它进行处理。
+
+问题来了？PublicLocalizer和LocalizerRunner有上面区别？还是启一小节来专门进行描述，太复杂了。
+
+## PublicLocalizer和LocalizerRunner的实现
+
+###PublicLocalizer的实现
+每个LocalizerTrack有且仅有一个PublicLocalizer，在LocalizerTrack初始化时候就完成PublicLocalizer的创建。PublicLocalizer在实现上，是一个线程，并且在该线程内部维护
+一个线程池。如下所示：
+
+    class PublicLocalizer extends Thread {
+    
+        final FileContext lfs;
+        final Configuration conf;
+        final ExecutorService threadPool;
+        final CompletionService<Path> queue;
+        // Its shared between public localizer and dispatcher thread.
+        final Map<Future<Path>,LocalizerResourceRequestEvent> pending;
+
+PublicLocalizer会每个addResource的操作在线程池中创建一个类型为FSDownload的线程，该线程会真正完成文件的下载的操作。
+
+主线程处于死循环中，从当前线程池中获取每个FSDownload线程的结束状态来判读Resource是否被正确下载，如下所示：
+    
+    public void run() {
+          try {
+            while (!Thread.currentThread().isInterrupted()) {
+              try {
+                Future<Path> completed = queue.take();
+                LocalizerResourceRequestEvent assoc = pending.remove(completed);
+                try {
+                  Path local = completed.get();
+                  LocalResourceRequest key = assoc.getResource().getRequest();
+                  publicRsrc.handle(new ResourceLocalizedEvent(key, local, FileUtil
+                    .getDU(new File(local.toUri()))));
+                  assoc.getResource().unlock();
+                } catch (ExecutionException e) {
+                  LocalResourceRequest req = assoc.getResource().getRequest();
+                  publicRsrc.handle(new ResourceFailedLocalizationEvent(req,
+                      e.getMessage()));
+                  assoc.getResource().unlock();
+                } 
+              } catch (InterruptedException e) {
+                return;
+              }
+            }
+          } catch(Throwable t) {
+            LOG.fatal("Error: Shutting down", t);
+          } finally {
+            LOG.info("Public cache exiting");
+            threadPool.shutdownNow();
+          }
+        }
+
+如果资源被正确下载，那么就会向LocalResourcesTracker发送一个ResourceLocalizedEvent事件，否则会发送一个ResourceFailedLocalizationEvent事件，如上所述
+这些事件会通过LocalResourcesTracker传递给LocalizedResource，最后通知相应的Container。
+
+###LocalizerRunner的实现
+从上面我们可以看到，对于PUBLIC类型的资源是采用线程来进行Localizer。那么对于PRIVATE和APPLICATION类型的资源的LocalizerRunner，是否是多线程呢？
+
+答案是否定的。下面我们来具体的分析
+
+LocalizerRunner也一个线程，其中维护一个待处理的Resource列表；和PublicLocalizer的主线程实现不同，LocalizerRunner是一个堵塞式调用ContainerExecutor的startLocalizer。
+    
+    public void run() {
+          Path nmPrivateCTokensPath = null;
+          try {
+            nmPrivateCTokensPath =
+              dirsHandler.getLocalPathForWrite(
+                    NM_PRIVATE_DIR + Path.SEPARATOR
+                        + String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT,
+                            localizerId));
+    
+            writeCredentials(nmPrivateCTokensPath);
+            List<String> localDirs = dirsHandler.getLocalDirs();
+            List<String> logDirs = dirsHandler.getLogDirs();
+            if (dirsHandler.areDisksHealthy()) {
+              exec.startLocalizer(nmPrivateCTokensPath, localizationServerAddress,
+                  context.getUser(),
+                  ConverterUtils.toString(
+                      context.getContainerId().
+                      getApplicationAttemptId().getApplicationId()),
+                  localizerId, localDirs, logDirs);
+            } else {
+              throw new IOException("All disks failed. "
+                  + dirsHandler.getDisksHealthReport());
+            }
+          } catch (Exception e) {
+            ContainerId cId = context.getContainerId();
+            dispatcher.getEventHandler().handle(
+                new ContainerResourceFailedEvent(cId, null, e.getMessage()));
+          } finally {
+            for (LocalizerResourceRequestEvent event : scheduled.values()) {
+              event.getResource().unlock();
+            }
+            delService.delete(null, nmPrivateCTokensPath, new Path[] {});
+          }
+        }
+
+和上面一章谈到的ContainerExecutor一样，不同的ContainerExecutor的实现可以提供不同的startLocalizer实现。就是说我们可以在startLocalizer起进程来进行文件的下载，
+也可以在其中起线程来进行下载。为了保证实现的兼容性，LocalizerRunner与startLocalizer所起的下载服务（进程/线程）之间的通信是基于RPC通信的。
+
+DefaultContainerExecutor就是在当前线程中起线程池来进行文件下载；LinuxContainerExecutor就是在当前线程中起一个外部进程来进行文件，当前线程挂起直到进程退出。
+不过不管是在当前线程维持线程池还是起一个进程来维持线程池，她们都是由ContainerLocalizer模块来实现。
+
+首先我们参考DefaultContainerExecutor当前线程的实现方案：
+    
+    public synchronized void startLocalizer(Path nmPrivateContainerTokensPath,
+          InetSocketAddress nmAddr, String user, String appId, String locId,
+          List<String> localDirs, List<String> logDirs)
+          throws IOException, InterruptedException {
+    
+        ContainerLocalizer localizer =
+            new ContainerLocalizer(lfs, user, appId, locId, getPaths(localDirs),
+                RecordFactoryProvider.getRecordFactory(getConf()));
+    
+        createUserLocalDirs(localDirs, user);
+        createUserCacheDirs(localDirs, user);
+        createAppDirs(localDirs, user, appId);
+        createAppLogDirs(appId, logDirs);
+    
+        Path appStorageDir = getFirstApplicationDir(localDirs, user, appId);
+    
+        String tokenFn = String.format(ContainerLocalizer.TOKEN_FILE_NAME_FMT, locId);
+        Path tokenDst = new Path(appStorageDir, tokenFn);
+        lfs.util().copy(nmPrivateContainerTokensPath, tokenDst);
+        lfs.setWorkingDirectory(appStorageDir);
+        
+        localizer.runLocalization(nmAddr);
+      }
+
+从实现上来，很简单，在当前线程中创建一个ContainerLocalizer对象，设置一下环境变量，设置一些目录，然后堵塞调用runLocalization，指定结束。
+
+而对于LinuxContainerExecutor，因为ContainerLocalizer类提供了main函数，可以直接以进程的方式起起来，参考ContainerLocalizer的实现。
+
+    public static void main(String[] argv) throws Throwable {
+        Thread.setDefaultUncaughtExceptionHandler(new YarnUncaughtExceptionHandler());
+        try {
+          String user = argv[0];
+          String appId = argv[1];
+          String locId = argv[2];
+          InetSocketAddress nmAddr =
+              new InetSocketAddress(argv[3], Integer.parseInt(argv[4]));
+          String[] sLocaldirs = Arrays.copyOfRange(argv, 5, argv.length);
+          ArrayList<Path> localDirs = new ArrayList<Path>(sLocaldirs.length);
+          for (String sLocaldir : sLocaldirs) {
+            localDirs.add(new Path(sLocaldir));
+          }
+    
+          final String uid =UserGroupInformation.getCurrentUser().getShortUserName();
+    
+          ContainerLocalizer localizer =
+              new ContainerLocalizer(FileContext.getLocalFSFileContext(), user,
+                  appId, locId, localDirs,
+                  RecordFactoryProvider.getRecordFactory(null));
+          System.exit(localizer.runLocalization(nmAddr));////
+        } catch (Throwable e) {
+          throw e;
+        }
+      }
+  
+可以看出，不管是在当前线程还是新起一个进程，都是堵塞调用ContainerLocalizer.runLocalization来等待下载操作结束。
+
+那现在问题来了，ContainerLocalizer.runLocalization到底是怎么进行文件下载的？它主要做了下面几个工作：
+
++   创建一个与ResourceLocalizationService之间的RPC通信，通信协议为LocalizationProtocol，该协议的实现很简单，仅仅提供一个heartbeat心跳接口。
+ContainerLocalizer周期的通过该心跳协议与RLS进行通信，拉取新的下载请求，并汇报已下载的资源情况。  
+heartbeat请求参数为LocalizerStatus。其中包括当前ContainerLocalizer归属哪个LocalizerRunner，即LocalizerId，以及当前处理所有资源信息和状态ContainerLocalizer。  
+heartbeat请求的返回值为LocalizerHeartbeatResponse。其中包括Action和一组需要被下载的资源列表。Action有LIVE和DIE两种，ContainerLocalizer根据Action的返回值来确定
+是否继续下载还是结束。
++   创建一个DownloadThreadPool线程池，当heartbeat返回值为LIVE时，将每个需要下载的资源创建一个FSDownload线程并添加到线程池中调度，这点和PublicLocalizer实现一直。
+
+ContainerLocalizer的实现很简单，详细的代码我们就不抠出来进行解析。
+
+现在还有一个遗留问题，ContainerLocalizer是RPC的client端，但是到目前为止，我们还咩有发现这个RPC的服务端是在哪里创建的？
+
+答案是这个服务端即ResourceLocalizationService一部分。
+
+    public class ResourceLocalizationService extends CompositeService
+        implements EventHandler<LocalizationEvent>, LocalizationProtocol{
+             public LocalizerHeartbeatResponse heartbeat(LocalizerStatus status) {
+                return localizerTracker.processHeartbeat(status);
+              }
+    }
+    
+我们看到，ResourceLocalizationService创建了该RPC Server，并把每个心跳请求转发给我们上文提到的LocalizerTracker。
+    
+    public LocalizerHeartbeatResponse processHeartbeat(LocalizerStatus status) {
+          String locId = status.getLocalizerId();
+          synchronized (privLocalizers) {
+            LocalizerRunner localizer = privLocalizers.get(locId);
+            if (null == localizer) {
+              // TODO process resources anyway
+              LOG.info("Unknown localizer with localizerId " + locId
+                  + " is sending heartbeat. Ordering it to DIE");
+              LocalizerHeartbeatResponse response =
+                recordFactory.newRecordInstance(LocalizerHeartbeatResponse.class);
+              response.setLocalizerAction(LocalizerAction.DIE);
+              return response;
+            }
+            return localizer.update(status.getResources());
+          }
+    }
+
+在LocalizerTracker内部，根据心跳协议来确定当前心跳来自哪个privLocalizers，并将请求转发给privLocalizers的update接口。
+
+总结：到目前为止，我们已经分析了PublicLocalizer和LocalizerRunner两种实现的不同。前者是直接线程间的通信来进行下载的调度。而后者是采用RPC的方式与
+每个负责下载的Localizer模块进行通信。
+
+具体为什么要这样的设计？我个人的认识还是配额的问题，用户私有的LocalizerRunner可以对起的下载进程进行配额，限制带宽等，
+而public所有用户共享，无需配额管理。因此如果我们使用DefaultContainerExecutor，那么PublicLocalizer和LocalizerRunner就没有本质区别，仅仅一个是rpc，一个线程间通信。
+
+===
+end
