@@ -38,7 +38,30 @@ Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们
 +   开始埋坑日期:2014-10-15
 +   坑状态:done
 
-## [metric系统的学习](./base/metric-learn.md)
+##   [NodeManager解析系列一：内存Monitor解析](./hadoop/nodemanager-container-monitor.md)
+用过MapReduce都遇到因为task使用内存过多，导致container被kill，然后通过网上来找资料来设置mapreduce.map.memory.mb/mapreduce.reduce.memory.mb
+/mapreduce.map.java.opts/mapreduce.reduce.java.opts来解决问题。但是对于内部实现我们还是不清楚，这篇文章就是来解析NodeManager怎么
+对container的内存使用进行Monitor
+
++   开始埋坑日期:2014-10-20
++   坑状态:done
+
+##   [NodeManager解析系列二：Container的启动](./hadoop/nodemanager-container-launch.md)
+Hadoop里面模块很多，为什么我优先对NodeManager进行解析呢？因为NodeManager与我提交的spark/mapreduce任务密切相关，
+如果对NodeManager理解不透，都不能理解Spark的Executor是怎么被调度起来的。这篇文件就是对Container的启动进行分析
+
++   开始埋坑日期:2014-11-2
++   坑状态:done
+
+##   [NodeManager解析系列三：Container Localization的研究](./hadoop/nodemanager-container-localizer.md)
+任何一个阅读过NodeManager源码的人都被Localization弄得晕头转向的，从LocalResource，LocalizedResource，LocalResourcesTracker，
+LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意就搞糊涂了，这篇文章对Localization进行分析，从个人感受来看，对Localization
+理解透了，基本上NodeManager都理解差不多了
+
++   开始埋坑日期:2014-11-2
++   坑状态:done
+
+## [metric系统的学习](./hadoop/metric-learn.md)
 对于Hadoop/Spark/HBase此类的分布式计算系统的日常维护,熟读系统的metric信息应该是最重要的技能.本文对Hadoop的metric/metric2的实现进行深究,
 但也仅仅是从实现的角度进行分析,对metric的完全理解需要时间积累,这样才能理解整个系统中每个metric的值对系统的影响.  
 在JVM内部,本身也有一套metric系统JMX,通过JMX可以远程查看甚至修改的应用运行时信息,本文将会从JMX开始,一步一步对这几套系统metric的实现进行分析.

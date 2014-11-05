@@ -1,4 +1,4 @@
-NodeManager Container Localization的研究
+NodeManager解析系列三：Container Localization的研究
 ==============
 在Hadoop v1版本中，通过Distributed Cache可以实现将MapReduce运行过程中需要的jar，数据文件等cache到jobTrack本地。在Hadoop v2中，废弃了Distributed Cache
 接口，将Localization模块放到NodeManager中，由yarn来统一实现Localization。

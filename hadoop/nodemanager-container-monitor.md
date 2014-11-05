@@ -1,4 +1,4 @@
-NodeManager 内存Monitor解析
+NodeManager解析系列一：内存Monitor解析
 ====
 
 通过yarn调度在NodeManager中每一个计算任务都是container，NM负责对container的运行状态进行监控。这里强调一下，运行在NodeManager中每个
