@@ -3,7 +3,7 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
-## [Spark-Shuffle](./spark/shuffle-study.md)
+### [Spark-Shuffle](./spark/shuffle-study.md)
 包括mapreduce和spark在内的所有离线计算工具，shuffle操作永远是设计最为笨重的，也是整体计算性能的瓶颈。主要原因是shuffle操作是不可避免的，
 而且它涉及到大量的本地IO，网络IO，甚至会占用大量的内存，CPU来做sort-based shuffle相关的操作。
 这里挖一个这个坑，由于第一个坑，所以我会在这个坑里面阐述大量的spark基础的东西，随便对这些基础做一下整理。
@@ -12,7 +12,7 @@
 +   期望完成日期：2014-10-7
 +   坑状态：doing
 
-## [Spark闭包清理的理解](./spark/function-closure-cleaner.md)
+### [Spark闭包清理的理解](./spark/function-closure-cleaner.md)
 scala是一门函数编程语言，当然函数，方法，闭包这些概念也是他们的核心，在阅读spark的代码过程，也充斥着大量关于scala函数相关的特性引用，比如：
 
     def map[U: ClassTag](f: T => U): RDD[U] = new MappedRDD(this, sc.clean(f))
@@ -23,7 +23,7 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 +   期望完成日期：2014-10-30
 +   坑状态：doing
 
-## [HBase总结笔记](./hbase/hbase-learn.md)
+### [HBase总结笔记](./hbase/hbase-learn.md)
 在Hadoop系里面玩了几年了,但是HBase一直以来都不太原因去深入学习.这次借项目,系统的对HBase进行学习,这里对Hbase里面一些核心主题进行总结.
 目前还没有打算从源码层面去深入研究的计划,后面有时间再一一研究.
 
@@ -31,14 +31,14 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 +   期望完成日期：2014-10-30
 +   坑状态：doing
 
-##   [HBase Bulk Loading实践](./hbase/hbase-bulk-loading.md)
+###   [HBase Bulk Loading实践](./hbase/hbase-bulk-loading.md)
 近期需要将mysql中的30T的数据导入到HBase中,一条条put,HDFS的IO负载太大,所以采用Hbase内部提供的Bulk Loading工具批量导入.   
 Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们只需要通过一个mapreduce将原始数据写为HFile格式,就可以轻易导入大量的数据.  
 
 +   开始埋坑日期:2014-10-15
 +   坑状态:done
 
-##   [NodeManager解析系列一：内存Monitor分析](./hadoop/nodemanager-container-monitor.md)
+###   [NodeManager解析系列一：内存Monitor分析](./hadoop/nodemanager-container-monitor.md)
 用过MapReduce都遇到因为task使用内存过多，导致container被kill，然后通过网上来找资料来设置mapreduce.map.memory.mb/mapreduce.reduce.memory.mb
 /mapreduce.map.java.opts/mapreduce.reduce.java.opts来解决问题。但是对于内部实现我们还是不清楚，这篇文章就是来解析NodeManager怎么
 对container的内存使用进行Monitor
@@ -46,14 +46,14 @@ Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们
 +   开始埋坑日期:2014-10-20
 +   坑状态:done
 
-##   [NodeManager解析系列二：Container的启动](./hadoop/nodemanager-container-launch.md)
+###   [NodeManager解析系列二：Container的启动](./hadoop/nodemanager-container-launch.md)
 Hadoop里面模块很多，为什么我优先对NodeManager进行解析呢？因为NodeManager与我提交的spark/mapreduce任务密切相关，
 如果对NodeManager理解不透，都不能理解Spark的Executor是怎么被调度起来的。这篇文件就是对Container的启动进行分析
 
 +   开始埋坑日期:2014-11-2
 +   坑状态:done
 
-##   [NodeManager解析系列三：Localization的分析](./hadoop/nodemanager-container-localizer.md)
+###   [NodeManager解析系列三：Localization的分析](./hadoop/nodemanager-container-localizer.md)
 任何一个阅读过NodeManager源码的人都被Localization弄得晕头转向的，从LocalResource，LocalizedResource，LocalResourcesTracker，
 LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意就搞糊涂了，这篇文章对Localization进行分析，从个人感受来看，对Localization
 理解透了，基本上NodeManager都理解差不多了
@@ -61,7 +61,7 @@ LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意�
 +   开始埋坑日期:2014-11-2
 +   坑状态:done
 
-## [Hadoop的Metric系统的分析](./hadoop/metric-learn.md)
+### [Hadoop的Metric系统的分析](./hadoop/metric-learn.md)
 对于Hadoop/Spark/HBase此类的分布式计算系统的日常维护,熟读系统的metric信息应该是最重要的技能.本文对Hadoop的metric/metric2的实现进行深究,
 但也仅仅是从实现的角度进行分析,对metric的完全理解需要时间积累,这样才能理解整个系统中每个metric的值对系统的影响.  
 在JVM内部,本身也有一套metric系统JMX,通过JMX可以远程查看甚至修改的应用运行时信息,本文将会从JMX开始,一步一步对这几套系统metric的实现进行分析.
@@ -70,22 +70,22 @@ LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意�
 +   期望完成日期：2014-10-30
 +   坑状态：doing
 
-## 矩阵乘法的spark实现
+### 矩阵乘法的spark实现
 最近想重拾一下数据挖掘和统计分析相关知识,毕业已经一年多了,很多都忘记了,在这里做一下笔记,先从矩阵相关开始进行复习和总结,并借助Spark做一下性能测试.
 
 +   开始埋坑日期:2014-10-15
 +   期望完成日期：2014-12-1
 +   坑状态：doing
 
-## Spark-Block管理
+### Spark-Block管理
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑，这个坑填好的时候，也许spark也就通了。
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-20
 +   坑状态：pending
 
-## RPC
-### thrif
+### RPC
+#### thrif
 一个完美集成序列化和RPC通信的跨语言通信框架，用起来实在是方便，但是没有对它Protocal,Transport,Model等实现研究一下，也让人很不踏实。  
 这里挖一个坑，对thrift进行深入研究一下。
 
@@ -93,42 +93,42 @@ LocalizerTracker这些关键字开始，命名十分接近，稍不注意注意�
 +   期望完成日期：2014-11-30
 +   坑状态：pending
 
-### hadoop-rpc
+#### hadoop-rpc
 thrift是一个很好的RPC框架，但是Hadoop的基于writable和protocal实现的两个版本的RPC框架其实也很牛，前后以后看了三次，都是一不总结就忘记了，这次RPC坑一起总结了。
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-11-30
 +   坑状态：pending
 
-### akka
+#### akka
 与thrift，hadoop实现RPC的逻辑不通，spark基于akka来进行RPC通信，不说了，这个东西真心好用，而且好像是基于协程来做，找一周时间深入研究一下，
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-11-30
 +   坑状态：pending
 
-##   列存储
+###   列存储
 到目前为止接触了RCFile，ORC, Parquet三种列存储的离线数据存储结构，虽然都有接触，但是还是研究不够彻底，这里挖坑，填好。
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-30
 +   坑状态：pending
 
-##   hive执行过程
+###   hive执行过程
 这次解决hive小文件过程，终于把hive的执行过程过了一边，这里简单做一个记录，这个坑不深挖，怕填不懂，特别语法解析那块，没有太多时间，精力，还有能力去填
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-30
 +   坑状态：pending
 
-##   hive小文件
+###   hive小文件
 namenode被hive小文件搞的不行了，这次算是定位到这个原因了，这里挖个坑，找个时间总结一下
 
 +   开始埋坑日期:2014-9-25
 +   期望完成日期：2014-10-30
 +   坑状态：pending
 
-##   spark调试系统的开发
+###   spark调试系统的开发
 这是一个代码坑，算是自己第一个开源程序，简单的想法就是在spark应用程序正式发布之前，可以通过这个系统进行调试，了解任务运行过程，资源占用情况，
 从而可以分析出未来正式上线需要分配多少资源。
 
