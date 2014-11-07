@@ -207,7 +207,11 @@ row就会被提取出来. 上面讨论到ValueFilter是针对所有的所有的c
 prefix和substring是有区别的,这个可以理解,但是ColumnPrefixFilter是可以从使用RegexStringComparator的QualifierFilter来实现,
 
 所以在本质上来说,ColumnPrefixFilter没有什么特殊的.
-和ColumnPrefixFilter相似的一个filter:org.apache.hadoop.hbase.filter.MultipleColumnPrefixFilter,它可以指定多个prefix.本质上也可以用regex来实现
+和ColumnPrefixFilter相似的两个filter:
+
++   org.apache.hadoop.hbase.filter.MultipleColumnPrefixFilter,它可以指定多个prefix.本质上也可以用regex来实现
++   org.apache.hadoop.hbase.filter.ColumnRangeFilter,支持对Column进行前缀区间匹配,比如匹配column的列名处于[a,e]之间
+
 
 ###org.apache.hadoop.hbase.filter.PageFilter
 这个也是一个很重要的PageFilter,它用于分页,即限制scan返回的row行数.它怎么实现的呢?其实很简单
@@ -237,3 +241,63 @@ prefix和substring是有区别的,这个可以理解,但是ColumnPrefixFilter是
 结束scan操作.
 
 和传统的sql不一样,PageFilter没有start和limit,start的功能需要使用Scan.setStartRow(byte[] startRow)来进行设置
+
+### org.apache.hadoop.hbase.filter.ColumnCountGetFilter
+该filter不适合Scan使用,仅仅适用于GET
+
+上述讨论的PageFilter是针对row进行分页,但是在get一条列很多的row时候,需要ColumnCountGetFilter来limit返回的列的数目.
+
+    public class ColumnCountGetFilter extends FilterBase {
+      private int limit = 0;
+      private int count = 0;
+      public ColumnCountGetFilter(final int n) {
+        this.limit = n;
+      }
+      public boolean filterAllRemaining() {
+        return this.count > this.limit;
+      }
+      public ReturnCode filterKeyValue(Cell v) {
+        this.count++;
+        return filterAllRemaining() ? ReturnCode.NEXT_COL : ReturnCode.INCLUDE_AND_NEXT_COL;
+      }
+
+和PageFilter一样,该Filter没有start,可以通过Get.setRowOffsetPerColumnFamily(int offset)进行设置
+
+### org.apache.hadoop.hbase.filter.ColumnPaginationFilter
+上面谈到的ColumnCountGetFilter只适合GET,而且不能指定start
+
+这里我们谈到的ColumnPaginationFilter就是解决这个问题;
+
+    public class ColumnPaginationFilter extends FilterBase
+    {
+      private int limit = 0;
+      private int offset = -1;      
+      private byte[] columnOffset = null;
+      public ColumnPaginationFilter(final int limit, final int offset)
+      {
+        this.limit = limit;
+        this.offset = offset;
+      }
+
+它包含limit和offset两个变量用来表示每个row的返回offset-limit之间的列;其中offset可以通过指定的column来指定,即columnOffset
+
+从实现角度来看,它就是基于filterKeyValue的NEXT_ROW,NEXT_COL,INCLUDE_AND_NEXT_COL三个返回值来影响column的filter来实现
+
+    public ReturnCode filterKeyValue(Cell v)
+    {
+          if (count >= offset + limit) {
+            return ReturnCode.NEXT_ROW;
+          }    
+          ReturnCode code = count < offset ? ReturnCode.NEXT_COL :
+                                             ReturnCode.INCLUDE_AND_NEXT_COL;
+          count++;
+          return code;
+      }
+  
+org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter是一个极端的limit和offset,即offset=0,limit=1,即每个row只返回第一个column记录
+
+还有最后几个比较简单的filter
+====
+
++   org.apache.hadoop.hbase.filter.TimestampsFilter:通过指定一个timestamp列表,所有不在列表中的column都会被过滤
++   org.apache.hadoop.hbase.filter.RandomRowFilter:每行是否被过滤是按照一定随机概率的,概率通过一个float进行指定
