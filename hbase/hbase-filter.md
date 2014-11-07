@@ -3,13 +3,13 @@ HBase Filter学习
 Hbase中针对GET和SCAN操作提供了filter（过滤器）的功能，从而可以实现row过滤和column过滤，在最近项目中正好要大量使用Filter来进行查询，
 下面我们从api的层面对Hbase的filter进行整理。
 
-重要:Filter是一个名词.站在应用的角度来看,Filter是过滤出我们想要的数据.但是站在HBase源码的角度,filter是有被过滤的含义.参考下面的例子:
+重要:Filter是一个名词.站在应用的角度来看,Filter是过滤出我们想要的数据.但是站在HBase源码的角度,filter是指一条记录是否被过滤.参考下面的例子:
     
     public boolean filterRowKey(byte[] buffer, int offset, int length) throws IOException {
         return false;
     }
     
-filterRowKey是对RowKey进行过滤,如果没有被过滤,是返回false,即INCLUDE在返回列表中,而true是被理解被过滤掉,即EXCLUDE.  
+filterRowKey是对RowKey进行过滤,如果没有被过滤,是返回false,即INCLUDE在返回列表中,而true则理解为被过滤掉,即EXCLUDE.  
 
 这点不同在理解Filter的实现很重要. 下面我们来开始看Filter的实现.
 
