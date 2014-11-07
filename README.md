@@ -38,6 +38,13 @@ Bulk Loading直接通过把HFile文件加载到已有的Hbase表中,因此我们
 +   开始埋坑日期:2014-10-15
 +   坑状态:done
 
+###[HBase Filter学习](./hbase/hbase-filter.md)
+HBase的逻辑查询是严格基于Filter来实现的,在HBase中,针对Filter提供了一个包来实现,类型还是挺多的,因为业务需要,这里做一个简单的整理.
+对日常比较需要的Filter拿出来做一个分析
+
++   开始埋坑日期:2014-11-10
++   坑状态：done
+
 ###   [NodeManager解析系列一：内存Monitor分析](./hadoop/nodemanager-container-monitor.md)
 用过MapReduce都遇到因为task使用内存过多，导致container被kill，然后通过网上来找资料来设置mapreduce.map.memory.mb/mapreduce.reduce.memory.mb
 /mapreduce.map.java.opts/mapreduce.reduce.java.opts来解决问题。但是对于内部实现我们还是不清楚，这篇文章就是来解析NodeManager怎么
