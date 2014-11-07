@@ -296,8 +296,7 @@ prefix和substring是有区别的,这个可以理解,但是ColumnPrefixFilter是
   
 org.apache.hadoop.hbase.filter.FirstKeyOnlyFilter是一个极端的limit和offset,即offset=0,limit=1,即每个row只返回第一个column记录
 
-还有最后几个比较简单的filter
-====
+###还有最后几个比较简单的filter
 
 +   org.apache.hadoop.hbase.filter.TimestampsFilter:通过指定一个timestamp列表,所有不在列表中的column都会被过滤
 +   org.apache.hadoop.hbase.filter.RandomRowFilter:每行是否被过滤是按照一定随机概率的,概率通过一个float进行指定
