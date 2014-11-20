@@ -16,8 +16,7 @@
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑。
 
 +   开始埋坑日期:2014-9-25
-+   期望完成日期：2014-10-20
-+   坑状态：pending
++   坑状态：done
 
 ### [Spark闭包清理的理解](./spark/function-closure-cleaner.md)
 scala是一门函数编程语言，当然函数，方法，闭包这些概念也是他们的核心，在阅读spark的代码过程，也充斥着大量关于scala函数相关的特性引用，比如：
@@ -35,8 +34,7 @@ map函数的应用，每次我传入一个f都会做一次sc.clean的操作，�
 目前还没有打算从源码层面去深入研究的计划,后面有时间再一一研究.
 
 +   开始埋坑日期:2014-10-10
-+   期望完成日期：2014-10-30
-+   坑状态：doing
++   坑状态：done
 
 ###   [HBase Bulk Loading实践](./hbase/hbase-bulk-loading.md)
 近期需要将mysql中的30T的数据导入到HBase中,一条条put,HDFS的IO负载太大,所以采用Hbase内部提供的Bulk Loading工具批量导入.   
