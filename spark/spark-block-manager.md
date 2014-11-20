@@ -198,7 +198,7 @@ Spark内部针对StorageLevel提供了一组默认实现:
 ##BlockStore
 BlockStore即Block真正的存储器;在Spark中,BlockStore是一个trait接口,用户可以针对该接口进行实现自己的Store,比如你可以实现一个通过Redis来存储的OffHeap的Store.
 
-目前Spark提供了下面几种BlockStore的实现.
+目前Spark提供了下面几种BlockStore的实现.其中TachyonStore本章就不进行分析,后面有时间再研究一下性能问题
 
 +   DiskStore
 +   MemoryStore
@@ -302,12 +302,181 @@ DiskBlockManager的核心工作就是这个,即提供  def getFile(filename: Str
 DiskStore剩下就没有什么需要分析的
 
 ### MemoryStore
+MemoryStore采用的JVM的heap内存进行Block存储;对于存储内存中,首先第一个需要解决的问题就是使用多少的内存用于Store存储?首先看几个配置:
 
++   spark.storage.memoryFraction:多少比例的JVM最大内存用于store存储,默认是0.6
++   spark.storage.safetyFraction:一个安全比例,即memoryFraction基础上做了一个缩小操作;
 
-
+那么最大可以用于Store的内存大小就为:
     
+     (Runtime.getRuntime.maxMemory * memoryFraction * safetyFraction).toLong
+
+这个公式大家肯定在多处看到过,但是在spark 1.1针对Spark 的memory做了一个优化:
+[Pass "cached" blocks directly to disk if memory is not large enough](https://issues.apache.org/jira/browse/SPARK-1777).
+这里有一个关于Store内存不够进行rdd cache时候存在的问题进行解决.
+
+简单描述一下这个过程:RDD的分片在进行cache,要进行unroll,即解压的过程(通过对rdd的分片进行迭代加载到内存中),但是在unroll之前,是无法确定需要的内存的大小,
+从而导致OOM; spark 1.1针对这个问题,采用分步来进行尝试解压,当前有空闲内存就进行解压,否则就不进行解压,其实就是不cache;
+
++   spark.storage.unrollMemoryThreshold:默认值2M,初始化进行申请用于unroll的内存
++   memoryGrowthFactor=1.5然后解压过程中按照1.5去增量申请内存.
++   不过最大可以用于Unroll的内存大小为:spark.storage.unrollFraction默认为02.既MemoryStore可以使用的内存*0.2
+
+具体可以参考上面的jira,有相应的设计文档.
+
+继续MemoryStore的分析.确定了内存大小以后, 下面每个消息在MemoryStore是怎么存储的?
+
+    private case class MemoryEntry(value: Any, size: Long, deserialized: Boolean)
+    private val entries = new LinkedHashMap[BlockId, MemoryEntry](32, 0.75f, true)
+
+即采用LinkedHashMap进行存储每个Block,Block的内容为MemoryEntry,它是一个Value的封装;
+
+剩下了的PUT/GET/REMOVE接口都比较简单,序列化的知识和上面谈到DiskStore基本一致,仅仅多了一个内存大小的限制和Unroll的过程;
+
+##BlockManager的服务结构
+通过上面的BlockID, ManagedBuffer, BlockInfo, StorageLevel以及Store的分析,在单机层面上,我们已经对BlockManager有了一定的认识,但是Spark是一个主从结构,
+BlockManager也在分散在每个executor. 比如在本地GetBlock的可能不在本地,而需要通过Remote的BlockManager进行交互进行该Block的内容;
+
+一句话就是说,Spark中的BlockManager是主从式的分布结构;下面我们对BlockManager的分布结构进行分析;
+
+### BlockManagerMaster服务
+BlockManagerMaster服务取名为Master其实是一个挺迷糊的名称;虽然它是Master,但是该对象并不是BlockManager的分布式服务的Master节点;而只是对Master节点一个连接符,
+通过该连接符,从而已可以和真正的Master节点进行通信;不管是在Driver还是在Executor上,都有一个BlockManagerMaster.
+
+真正的Master节点是BlockManagerMasterActor这个对象;这个对象什么时候创建的呢?
+
+参见SparkEvn初始化部分的代码,这里在Driver和Executor上创建BlockManagerMaster,
     
+    val blockManagerMaster = new BlockManagerMaster(registerOrLookup(
+          "BlockManagerMaster",
+          new BlockManagerMasterActor(isLocal, conf, listenerBus)), conf, isDriver)
+      
+其中registerOrLookup在Spark中使用地方很多;含义很简单,如果当前在Driver那么register一个Actor的服务端并返回一个连接符,否则创建一个与服务端的连接符
+ 
+ 如果现在在Driver执行上,那么就会创建一个BlockManagerMasterActor对象,这个对象就是BlockManager主从分布式结构的Master节点,
+ 它维护了整个集群所有的Block和所有的 BlockManager从节点; 但是如果是在Executor上,就不会创建BlockManagerMasterActor,
+ 而只创建一个与主服务的连接,用于与主服务进行通信.
+ 
+ 下面我们对BlockManagerMasterActor进行详细分析;
+ 
+    class BlockManagerMasterActor
+      extends Actor with ActorLogReceive with Logging {    
+      private val blockManagerInfo = new mutable.HashMap[BlockManagerId, BlockManagerInfo]
+      private val blockManagerIdByExecutor = new mutable.HashMap[String, BlockManagerId]
+      private val blockLocations = new JHashMap[BlockId, mutable.HashSet[BlockManagerId]
 
+BlockManagerMasterActor最为重要的三个数据结构为blockManagerInfo,blockManagerIdByExecutor,blockLocations. 
+它们维护了executor, blockID, blockManager, block之间的关联信息.
 
+BlockManagerMasterActor的功能也很简单,就是围绕上面三个数据结构,处理来自BlockManagerSlave的消息并更新上面三个数据结构;
+下面我们看看BlockManager的通信协议BlockManagerMessages.
 
+    private[spark] object BlockManagerMessages {
+      // Messages from the master to slaves.
+      sealed trait ToBlockManagerSlave
     
+      case class RemoveBlock(blockId: BlockId) extends ToBlockManagerSlave
+      case class RemoveRdd(rddId: Int) extends ToBlockManagerSlave
+      case class RemoveShuffle(shuffleId: Int) extends ToBlockManagerSlave
+      case class RemoveBroadcast(broadcastId: Long, removeFromDriver: Boolean = true)    
+    
+      // Messages from slaves to the master.
+      sealed trait ToBlockManagerMaster
+    
+      case class RegisterBlockManager(blockManagerId: BlockManagerId,maxMemSize: Long,sender: ActorRef)
+        extends ToBlockManagerMaster    
+      case class UpdateBlockInfo( var blockManagerId: BlockManagerId,var blockId: BlockId, var storageLevel: StorageLevel,
+          var memSize: Long,var diskSize: Long,var tachyonSize: Long)extends ToBlockManagerMaster
+      case class GetLocations(blockId: BlockId) extends ToBlockManagerMaster    
+      case class GetLocationsMultipleBlockIds(blockIds: Array[BlockId]) extends ToBlockManagerMaster    
+      case class GetPeers(blockManagerId: BlockManagerId) extends ToBlockManagerMaster    
+      case class RemoveExecutor(execId: String) extends ToBlockManagerMaster    
+      case object StopBlockManagerMaster extends ToBlockManagerMaster    
+      case object GetMemoryStatus extends ToBlockManagerMaster    
+      case object GetStorageStatus extends ToBlockManagerMaster    
+      case class GetBlockStatus(blockId: BlockId, askSlaves: Boolean = true)
+        extends ToBlockManagerMaster    
+      case class GetMatchingBlockIds(filter: BlockId => Boolean, askSlaves: Boolean = true)
+        extends ToBlockManagerMaster    
+      case class BlockManagerHeartbeat(blockManagerId: BlockManagerId) extends ToBlockManagerMaster    
+      case object ExpireDeadHosts extends ToBlockManagerMaster
+    }
+    
+这些消息包主要分为两种类型,由Master发送给Slave的ToBlockManagerSlave和由Slave发送给Master的ToBlockManagerMaster;具体的含义都很直接,主要包括
+
++   Remove:由Master通知Slave移除Block
++   Slave与Master之间的同步:通过RegisterBlockManager向Master注册,通过UpdateBlockInfo向Master汇报当前BlockManager的状态信息,通过BlockManagerHeartbeat进行心跳
++   GetLocations:通过与Master进行通信,获取远程Block的location信息
++   Master提供各种查询入口.
+
+最后,一句话:上面谈到了BlockManagerMasterActor这个只会在Driver上创建,但是不管是在Driver还是在Slave上都会创建BlockManagerMaster;
+所以取名为BlockManagerMaster很模糊.
+
+##BlockManagerSlaveActor
+上面谈BlockManagerMasterActor说到,Slave可以通过BlockManagerMaster与Master进行通信,使用的消息包为: ToBlockManagerMaster;但是也提到Slave可以和Master进行
+通信,即通过ToBlockManagerSlave,要进行通信,那么就必须创建一个Actor,即本节分析的BlockManagerSlaveActor.
+
+它是在BlockManager中创建的,即每个BlockManager都是一个SlaveActor;同时BlockManager不管是在Driver还是Executor都会被创建,那么就是包括Driver在内所有的节点
+都是BlockManager的从节点,这个还是不难理解.
+
+SlaveActor就可以直接贴代码了,比较简单:
+
+    override def receiveWithLogging = {
+        case RemoveBlock(blockId) =>
+          doAsync[Boolean]("removing block " + blockId, sender) {
+            blockManager.removeBlock(blockId)
+            true
+          }    
+        case RemoveRdd(rddId) =>
+          doAsync[Int]("removing RDD " + rddId, sender) {
+            blockManager.removeRdd(rddId)
+          }    
+        case RemoveShuffle(shuffleId) =>
+          doAsync[Boolean]("removing shuffle " + shuffleId, sender) {
+            if (mapOutputTracker != null) {
+              mapOutputTracker.unregisterShuffle(shuffleId)
+            }
+            SparkEnv.get.shuffleManager.unregisterShuffle(shuffleId)
+          }    
+        case RemoveBroadcast(broadcastId, _) =>
+          doAsync[Int]("removing broadcast " + broadcastId, sender) {
+            blockManager.removeBroadcast(broadcastId, tellMaster = true)
+          }    
+        case GetBlockStatus(blockId, _) =>
+          sender ! blockManager.getStatus(blockId)    
+        case GetMatchingBlockIds(filter, _) =>
+          sender ! blockManager.getMatchingBlockIds(filter)
+      }
+  
+从上面我们可以看到,Slave接受Master的操作就两类:remove和getStatus;这里就要说一下不规范的问题了;
+
+    case class GetBlockStatus(blockId: BlockId, askSlaves: Boolean = true)
+        extends ToBlockManagerMaster
+    case class GetMatchingBlockIds(filter: BlockId => Boolean, askSlaves: Boolean = true)
+        extends ToBlockManagerMaster    
+        
+上面我们知道GetBlockStatus和GetMatchingBlockIds是继承ToBlockManagerMaster,但是这里把它当着ToBlockManagerSlave来处理,但是不会出错,只是不规范!!
+
+到目前为止BlockManager的主从结构就挖出来了;BlockManagerMasterActor为真正的主, BlockManagerMaster为与主之间的通信连接符, BlockManagerSlaveActor从上的通信接口;
+
+还剩下最后一个重点,就是真正的从的逻辑模块,即BlockManager对象,这里说是BlockManager对象; 本文全部都在讨论的是BlockManager框架;
+
+##BlockManager对象
+BlockManager对象是每个Block的slave对象,在每个Executor上都一个BlockManager对象,其中通过BlockManagerId进行标示
+    
+    class BlockManagerId private (
+        private var executorId_ : String,
+        private var host_ : String,
+        private var port_ : Int)
+ 
+每个BlockManager对象, 包括了与BlockManagerMasterActor保持连接的BlockManagerMaster,有提供给Master通信的BlockManagerSlaveActor;
+同时还包含了
+
++   val blockInfo = new TimeStampedHashMap[BlockId, BlockInfo]:即本地BlockManager维护的所有Block信息
++   MemoryStore/DiskStore/TachyonStore/DiskBlockManager
++   metadataCleaner/broadcastCleaner:Block清理服务
+
+同时BlockManager是继承自BlockDataManager,对外提供了getBlockData和putBlockData接口;
+
+BlockManager对象内部每个函数的实现这里就不进行分析,无非就是和上面谈到的所有的对象进行交互!后面有时间再补充了!好累!!
+
