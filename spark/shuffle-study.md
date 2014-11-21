@@ -264,11 +264,13 @@ numAvailableOutputs这个变量就是在addOutputLoc这个函数中进行加一�
 
 简单解析一下MapStatus这个类.
     
+     ```java
     private[spark] sealed trait MapStatus {
       def location: BlockManagerId
     
       def getSizeForBlock(reduceId: Int): Long
     }
+    ```
 
 这个类很简单,首先BlockManagerId代表BlockManager的标示符,里面包含了Host之类的性能,换句话通过BlockManagerId我们知道一个Task的Map输出在哪台Executor机器
 上;
