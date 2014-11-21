@@ -264,13 +264,11 @@ numAvailableOutputs这个变量就是在addOutputLoc这个函数中进行加一�
 
 简单解析一下MapStatus这个类.
     
-     ```java
     private[spark] sealed trait MapStatus {
       def location: BlockManagerId
     
       def getSizeForBlock(reduceId: Int): Long
     }
-    ```
 
 这个类很简单,首先BlockManagerId代表BlockManager的标示符,里面包含了Host之类的性能,换句话通过BlockManagerId我们知道一个Task的Map输出在哪台Executor机器
 上;
@@ -301,7 +299,9 @@ numAvailableOutputs这个变量就是在addOutputLoc这个函数中进行加一�
     }
 
 Stage里面有resultOfJob对这个变量,表示我们当前Stage所对应的Job,它里面有一个finished数组存储这当前Stage/Job所有已经完成Task,换句话说,如果finished里面全部是true,
-这个Job运行完成了,这个Job对应的FinalStage也运行完成了,FinalStage依赖的ShuffleStage,以及ShuffleStage依赖的ShuffleStage都运行完成了;
+这个Job运行完成了,这个Job对应的FinalStage也运行完成了,FinalStage依赖的ShuffleStage,以及ShuffleStage依赖的ShuffleStage肯定都运行完成了;
+
+这里说到ActiveJob这个类就多说一句,它的val listener: JobListener变量,其实它就是我们Step4中的waiter,JobWaiter是JobListener类的子类,后面我们要讲到
 
 对Stage这个类做一个总结:Stage可以分为ShuffleStage和FinalStage, 对于ShuffleStage,提供了查询入口来判读Stage是否运行完成,也存储了每个Shuffle Map Task output的BlockManager信息;
 对于FinalStage,它和Job是一一绑定,通过Job可以确定Job是否运行完成;
@@ -431,5 +431,121 @@ MapOut,
 
 到目前为止,我们已经将我们count job按照ResultTask的提交给Spark进行运行.
 好,下面进入最后一个步骤就是我们task运行结果怎么传递给我们的上面Step1回调函数和Step4的waiter对象
-    
 
+    //Step7:DAGScheduler
+    private[scheduler] def handleTaskCompletion(event: CompletionEvent) {
+        val task = event.task
+        val stageId = task.stageId
+        val taskType = Utils.getFormattedClassName(task)
+        event.reason match {
+          //event.reason表示TasK运行结果
+          case Success =>
+            stage.pendingTasks -= task
+            task match {
+              //Task是ResultTask
+              case rt: ResultTask[_, _] =>
+                stage.resultOfJob match {
+                  case Some(job) =>
+                    if (!job.finished(rt.outputId)) {
+                      job.finished(rt.outputId) = true
+                      job.numFinished += 1
+                      if (job.numFinished == job.numPartitions) {
+                        markStageAsFinished(stage)
+                        cleanupStateForJobAndIndependentStages(job)
+                        listenerBus.post(SparkListenerJobEnd(job.jobId, JobSucceeded))
+                      }
+                      job.listener.taskSucceeded(rt.outputId, event.result)
+                    }
+                  case None =>
+                    logInfo("Ignoring result from " + rt + " because its job has finished")
+                }
+              //Task是ShuffleTask
+              case smt: ShuffleMapTask =>
+                val status = event.result.asInstanceOf[MapStatus]
+                val execId = status.location.executorId
+                if (failedEpoch.contains(execId) && smt.epoch <= failedEpoch(execId)) {
+                  logInfo("Ignoring possibly bogus ShuffleMapTask completion from " + execId)
+                } else {
+                  stage.addOutputLoc(smt.partitionId, status)
+                }
+                if (runningStages.contains(stage) && stage.pendingTasks.isEmpty) {
+                  markStageAsFinished(stage)
+                  if (stage.shuffleDep.isDefined) {
+                    mapOutputTracker.registerMapOutputs(
+                      stage.shuffleDep.get.shuffleId,
+                      stage.outputLocs.map(list => if (list.isEmpty) null else list.head).toArray,
+                      changeEpoch = true)
+                  }
+                  clearCacheLocs()
+                  if (stage.outputLocs.exists(_ == Nil)) {
+                    submitStage(stage)
+                  } else {
+                    val newlyRunnable = new ArrayBuffer[Stage]
+                    for (stage <- waitingStages if getMissingParentStages(stage) == Nil) {
+                      newlyRunnable += stage
+                    }
+                    waitingStages --= newlyRunnable
+                    runningStages ++= newlyRunnable
+                    for {
+                      stage <- newlyRunnable.sortBy(_.id)
+                      jobId <- activeJobForStage(stage)
+                    } {
+                      submitMissingTasks(stage, jobId)
+                    }
+                  }
+                }
+              }
+        }
+      }
+
+上述代码来自DAGScheduler的handleTaskCompletion函数,这个函数逻辑较多,这里只扣出event.reason=SUCCESS部分逻辑;该函数处理来自每个Task
+运行成功以后,由TaskScheduler向DAGScheduler发送的消息,函数的参数为CompletionEvent:
+
+    private[scheduler] case class CompletionEvent(
+        task: Task[_],
+        reason: TaskEndReason,
+        result: Any,
+        accumUpdates: Map[Long, Any],
+        taskInfo: TaskInfo,
+        taskMetrics: TaskMetrics)
+      extends DAGSchedulerEvent
+
+有两个重要参数reason和result,分别表示Task结束的原因以及Task的运行结果,我们这里只截取了reason=Success的逻辑,表示Task运行成功;而result就为Task运行结果;
+
+上面我们说了Task有两种类型ResultTask和ShuffleMapTask,我们这里的case为ResultTask;它的业务逻辑主要包括以下几个步骤:
+
++   job.numFinished += 1和job.finished(rt.outputId) = true设置job的一个分片运行结果为true
++   job.listener.taskSucceeded(rt.outputId, event.result)这个过程中很重要,我们下面分析以下:job.listener是什么
+
+在上面的ActiveJob我们提到job的listener字段,其实就是我们step4设置的waiter对象;如下所示,我们可以看到JobWaiter是JobListener的子类
+
+    private[spark] class JobWaiter[T](
+        dagScheduler: DAGScheduler,
+        val jobId: Int,
+        totalTasks: Int,
+        resultHandler: (Int, T) => Unit)
+      extends JobListener {    
+      override def taskSucceeded(index: Int, result: Any): Unit = synchronized {
+        resultHandler(index, result.asInstanceOf[T])
+        finishedTasks += 1
+        if (finishedTasks == totalTasks) {
+          _jobFinished = true
+          jobResult = JobSucceeded
+          this.notifyAll()
+        }
+      }
+      def awaitResult(): JobResult = synchronized {
+          while (!_jobFinished) {
+            this.wait()
+          }
+          return jobResult
+        }
+
+上面是JobWaiter类以及被Step7调用的taskSucceeded函数,我们发现就在taskSucceeded这个函数里面,调用了我们在Step2设置的resultHandler,就是这里,将我们Task运行的结果
+通过event.result传递给我们Step2中Array;
+
+并且在随后判读finishedTasks == totalTasks所有的Task是否都运行完成, 如果是,那么就this.notifyAll(),唤醒了Step3的awaitResult函数;
+
+到目前为止,我们以及走通了一个非ShuffleStage的运行过程;虽然中间我啰嗦了几句关于Shuffle的东西,如果理解不够没有关系,下一步我们就会来分析非Shuffle的执行过程;
+
+## Shuffle Job的执行过程
