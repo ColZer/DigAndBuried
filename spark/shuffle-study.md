@@ -227,15 +227,207 @@ Step5.1中首先是在当前的rdd上调用getParentStages来生成父Stage,父S
         val callSite: CallSite){
     }
 
-首先我们看Stage几个参数,其中shuffleDep和parents最为重要,首先如果一个Stage的shuffleDep不为空,那么当前的Stage是因为shuffleMap输出而生成的Stage;
+首先我们看Stage几个字段,其中shuffleDep和parents最为重要,首先如果一个Stage的shuffleDep不为空,那么当前的Stage是因为shuffleMap输出而生成的Stage;
 
->怎么解释呢?就是这个Stage生成原因吧;因为下游rdd对当前的rdd有这个依赖而生成需要为当前的rdd生成一个Stage,而对于FinalStage,shuffleDep就为空,
+>怎么解释呢?shuffleDep就是该Stage的生成原因;因为下游rdd对当前的rdd有这个依赖而生成在当前rdd上生成一个Stage. 因此FinalStage,shuffleDep值为none
 
-parents参数就是父RDD列表,当前rdd被调度的前提是所有的父Stage都调度完成;那么
+parents参数就是父Stage列表,当前rdd被调度的前提是所有的父Stage都调度完成;对于我们当前研究这个case来说,shuffleDep和parents都为none;
 
+Stage这个类还有两个比较重要的函数:
+    
+    //Stage.class
+    val isShuffleMap = shuffleDep.isDefined
+    def isAvailable: Boolean = {
+        if (!isShuffleMap) {
+          true
+        } else {
+          numAvailableOutputs == numPartitions
+        }
+      }
+    
+      def addOutputLoc(partition: Int, status: MapStatus) {
+        val prevList = outputLocs(partition)
+        outputLocs(partition) = status :: prevList
+        if (prevList == Nil) {
+          numAvailableOutputs += 1
+        }
+      }
+
+isAvailable这个函数,判读该Stage是否已经运行完成;首先看这个函数,它判读isShuffleMap即当前Stage是否是ShuffleStage.如果不是Shuffle, 这个Stage永远是OK;
+换句话说:这个函数对非ShuffleStage没有意义;非ShuffleStage就是上面说的FinalStage, FinalStage永远只有一个,我们不会去判读一个Job的FinalStage是否Ok;
+
+那么为什么要判读ShuffleStage是否OK呢?因为ShuffleStage肯定是中间Stage,只有这个中间Stage完成了才可以提交对该Stage有依赖的下游Stage去计算;
+
+如果当前Stage是ShuffleStage, 那么该Stage Available的前提是该ShuffleStage的所有的MapOutput已经生成成功,即该Stage的所有shuffle Map task已经运行成功;  
+numAvailableOutputs这个变量就是在addOutputLoc这个函数中进行加一操作;所有我们可以大胆的假设,每个Shuffle Map Task完成Task的输出以后,就会调用该函数
+设置当前Task所对应的分片的MapStatus; 一旦所有的分片的MapStatus都设置了,那么就代表该Stage所有task都已经运行成功
+
+简单解析一下MapStatus这个类.
+    
+    private[spark] sealed trait MapStatus {
+      def location: BlockManagerId
+    
+      def getSizeForBlock(reduceId: Int): Long
+    }
+
+这个类很简单,首先BlockManagerId代表BlockManager的标示符,里面包含了Host之类的性能,换句话通过BlockManagerId我们知道一个Task的Map输出在哪台Executor机器
+上;
+
+对于一个ShuffleStage,我们知道当前ShuffleID, 知道每个Map的index,知道Reduce个数和index,那么通过这里的MapStatus.BlockManagerId就可以读取每个map针对每个reduce的输出Block;
+这里getSizeForBlock就是针对每个map上针对reduceId输出的Block大小做一个估算
+
+关于BlockManager相关的知识参阅我的另外一篇文章;简单一句话:MapStatus就是ShuffleMap的输出位置;
+
+上面说了isAvailable不能用于判读FinalStage是否完成,那么我们有没有办法来判读一个FinalStage是否完成呢?有的;我们知道Job肯定只有一个FinalStage,一个FinalStage是否
+运行完成,其实就是这个Job是否完成,那么怎么判读一个Job是否完成呢?
+
+    //Stage.class
+     var resultOfJob: Option[ActiveJob] = None
+   //ActiveJob
+   private[spark] class ActiveJob(
+       val jobId: Int,
+       val finalStage: Stage,
+       val func: (TaskContext, Iterator[_]) => _,
+       val partitions: Array[Int],
+       val callSite: CallSite,
+       val listener: JobListener,
+       val properties: Properties) {
+   
+     val numPartitions = partitions.length
+     val finished = Array.fill[Boolean](numPartitions)(false)
+     var numFinished = 0
+   }
+
+Stage里面有resultOfJob对这个变量,表示我们当前Stage所对应的Job,它里面有一个finished数组存储这当前Stage/Job所有已经完成Task,换句话说,如果finished里面全部是true,
+这个Job运行完成了,这个Job对应的FinalStage也运行完成了,FinalStage依赖的ShuffleStage,以及ShuffleStage依赖的ShuffleStage都运行完成了;
+
+对Stage这个类做一个总结:Stage可以分为ShuffleStage和FinalStage, 对于ShuffleStage,提供了查询入口来判读Stage是否运行完成,也存储了每个Shuffle Map Task output的BlockManager信息;
+对于FinalStage,它和Job是一一绑定,通过Job可以确定Job是否运行完成;
+
+下面继续回到Step 5.1;
+
+在Step 5.1中完成对newStage函数的调用,创建了一个Stage,该Stage的shuffleDep和parents都为none;即该Stage为一个FinalStage,没有任何parent Stage的依赖,那么Spark调度器就
+可以把我们的Stage拆分为Task提交给Spark进行调度,即Step 5.2:submitStage;好,我们继续;
+
+    //5.2:DAGScheduler
+    private def submitStage(stage: Stage) {
+           val jobId = activeJobForStage(stage)
+          if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
+            val missing = getMissingParentStages(stage).sortBy(_.id)
+            if (missing == Nil) {
+              submitMissingTasks(stage, jobId.get)
+            } else {
+              for (parent <- missing) {
+                submitStage(parent)
+              }
+              waitingStages += stage
+            }
+          }
+      }
+
+Step里面首先判读当前Stage是否处于等待状态,是否处于运行状态,是否处于失败状态. 运行和失败都很好理解,对于等待状态,这里做一个简单的解释:所谓的等待就是
+当前Stage依赖的ParentStages还没有运行完成;就是getMissingParentStages这个函数,这个函数的功能肯定对我们Stage的parentStage进行遍历,判读是否isAvailable;
+如果为Nil,那么我们就可以调用submitMissingTasks将我们当前的Stage转化为Task进行提交,否则将当前的Stage添加到waitingStages中,即设置当前Stage为等待状态;
+
+其实Stage5.2的逻辑很简单,但是它是Stage层面的最为重要的调度逻辑,即DAG序列化, DAG调度不就是将我们的DAG图转化为有先后次序的序列图吗?!所以简单但是还是要理解;
+
+对于我们的case,流程就进入了submitMissingTasks, 即真正的将Stage转化为Task的功能, 继续;
+
+    //Step6:DAGScheduler
+      private def submitMissingTasks(stage: Stage, jobId: Int) {
+        //Step6.1
+        stage.pendingTasks.clear()
+        val partitionsToCompute: Seq[Int] = {
+          if (stage.isShuffleMap) {
+            (0 until stage.numPartitions).filter(id => stage.outputLocs(id) == Nil)
+          } else {
+            val job = stage.resultOfJob.get
+            (0 until job.numPartitions).filter(id => !job.finished(id))
+          }
+        }
+        runningStages += stage
+    
+        //Step6.2
+        var taskBinary: Broadcast[Array[Byte]] = null
+        val taskBinaryBytes: Array[Byte] =
+        if (stage.isShuffleMap) {
+          closureSerializer.serialize((stage.rdd, stage.shuffleDep.get) : AnyRef).array()
+        } else {
+          closureSerializer.serialize((stage.rdd, stage.resultOfJob.get.func) : AnyRef).array()
+        }
+       taskBinary = sc.broadcast(taskBinaryBytes)
+    
+        //Step6.3
+        val tasks: Seq[Task[_]] = if (stage.isShuffleMap) {
+          partitionsToCompute.map { id =>
+            val locs = getPreferredLocs(stage.rdd, id)
+            val part = stage.rdd.partitions(id)
+            new ShuffleMapTask(stage.id, taskBinary, part, locs)
+          }
+        } else {
+          val job = stage.resultOfJob.get
+          partitionsToCompute.map { id =>
+            val p: Int = job.partitions(id)
+            val part = stage.rdd.partitions(p)
+            val locs = getPreferredLocs(stage.rdd, p)
+            new ResultTask(stage.id, taskBinary, part, locs, id)
+          }
+        }
+        //Step6.4
+        if (tasks.size > 0) {
+          closureSerializer.serialize(tasks.head)
+          stage.pendingTasks ++= tasks
+          taskScheduler.submitTasks(
+            new TaskSet(tasks.toArray, stage.id, stage.newAttemptId(), stage.jobId, properties))
+        } else {
+          runningStages -= stage
+        }
+      }
+
+submitMissingTasks的可以删除的代码逻辑不多,都很重要,剩下上面的Step6.1~Step 6.4.下面我们一一进行分析;我们还是先综述一下Step6的工作:
+
+Step6是对Stage到Task的拆分,首先利于上面说到的Stage知识获取所需要进行计算的task的分片;因为该Stage有些分片可能已经计算完成了;然后将Task运行依赖的RDD,Func,shuffleDep
+ 进行序列化,通过broadcast发布出去; 然后创建Task对象,提交给taskScheduler调度器进行运行;
+ 
+ +  Step6.1:就是对Stage进行遍历所有需要运行的Task分片;这个不是很好理解,难道每次运行不是对所有分片都进行运行吗?没错,正常的逻辑是对所有的分片进行运行,但是
+ 存在部分task失败之类的情况,或者task运行结果所在的BlockManager被删除了,就需要针对特定分片进行重新计算;即所谓的恢复和重算机制;不是我们这里重点就不进行深入分析;
+ +  Step6.2:对Stage的运行依赖进行序列化并broadcast出去,我对broadcast不是很了解,但是这里我们发现针对ShuffleStage和FinalStage所序列化的内容有所不同;
+    +   对于ShuffleStage序列化的是RDD和shuffleDep;而对FinalStage序列化的是RDD和Func
+    +   怎么解释呢?对于FinalStage我们知道,每个Task运行过程中,需要知道RDD和运行的函数,比如我们这里讨论的Count实现的Func;而对于ShuffleStage,没有所有Func,
+    它的task运行过程肯定是按照ShuffleDep的要求,将Map output到相同的物理位置;所以它需要将ShuffleDep序列化出去
+    
+        class ShuffleDependency[K, V, C](
+            @transient _rdd: RDD[_ <: Product2[K, V]],
+            val partitioner: Partitioner,
+            val serializer: Option[Serializer] = None,
+            val keyOrdering: Option[Ordering[K]] = None,
+            val aggregator: Option[Aggregator[K, V, C]] = None,
+            val mapSideCombine: Boolean = false)
+          extends Dependency[Product2[K, V]] {
         
+          override def rdd = _rdd.asInstanceOf[RDD[Product2[K, V]]]
+        
+          val shuffleId: Int = _rdd.context.newShuffleId()
+        
+          val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
+            shuffleId, _rdd.partitions.size, this)
+        
+          _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
+        }
 
+    上面就是ShuffleDependency,我们看到ShuffleDep包含了partitioner告诉我们要按照什么分区函数将Map分Bucket进行输出, 有serializer告诉我们怎么对Map的输出进行
+    序列化, 有keyOrdering和aggregator告诉我们怎么按照Key进行分Bucket,已经怎么进行合并,以及mapSideCombine告诉我们是否需要进行Map端reduce;  
+    还有最为重要的和Shuffle完全相关的shuffleId和ShuffleHandle,这两个东西我们后面具体研究Shuffle再去分析;
+    +   因此对于ShuffleStage,我们需要把ShuffleDependency序列化下去
++   Step6.3;针对每个需要计算的分片构造一个Task对象,和Step6.2, finalStage和ShuffleStage对应了不同类型的Task,分别为ShuffleMapTask和ResultTask;
+她们都接受我们Step6.2broadcast的Stage序列化内容;这样我们就很清楚每个Task的工作,对于ResultTask就是在分片上调用我们的Func,而ShuffleMapTask按照ShuffleDep进行
+MapOut,
++   Step6.4就是调用taskScheduler将task提交给Spark进行调度
 
+这一节我们不会把分析到Task里面,因此我们就不去深扣ShuffleMapTask和ResultTask两种具体的实现,只需要知道上面谈到的功能就可以;同时我们不会去去分析task调度器的工作原理;
+下一篇问题我们会详细分析task调度器;相比DAG调度仅仅维护Stage之间的关系,Task调度器需要将具体Task发送到Executor上执行,涉及内容较多,下一篇吧;
 
-
+到目前为止,我们已经将我们count job按照ResultTask的提交给Spark进行运行.
+好,下面进入最后一个步骤就是我们task运行结果怎么传递给我们的上面Step1回调函数和Step4的waiter对象
+    
 
