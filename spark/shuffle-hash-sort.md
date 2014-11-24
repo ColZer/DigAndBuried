@@ -1,7 +1,7 @@
 HashShuffle和SortShuffleManager实现分析
 =====
 
-在上一篇文章中，我们说到Shuffle包括ShuffleMapStage和ShuffledRDD两步骤，分别对应了Shuffle的Map和Reduce；在这两个步骤中ShuffleManager充当了很重要的角色。
+在《[Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)》中，我们说到Shuffle包括ShuffleMapStage和ShuffledRDD两步骤，分别对应了Shuffle的Map和Reduce；在这两个步骤中ShuffleManager充当了很重要的角色。
 
 +   它指导了ShuffleMapStage的Task怎么进行Map的write操作
 +   它指导了ShuffledRDD的compute函数怎么去每个Map的节点拉取指定reduce的数据；
@@ -234,7 +234,70 @@ getBlockData接口就需要去遍历所有的FileGroup, 即allFileGroups,判读�
 OK,我想我们应该理解了支持consolidateFiles的FileShuffleBlockManager的实现了;
 
 ###HashShuffleWriter的实现;
-如果对FileShuffleBlockManager的理解比较清楚,我想对
+如果对FileShuffleBlockManager的理解比较清楚,HashShuffleWriter的理解就比较简单.
+
+    private[spark] class HashShuffleWriter[K, V](
+        shuffleBlockManager: FileShuffleBlockManager,
+        handle: BaseShuffleHandle[K, V, _],
+        mapId: Int,
+        context: TaskContext)
+      extends ShuffleWriter[K, V] with Logging {
+      
+       private val dep = handle.dependency
+       private val numOutputSplits = dep.partitioner.numPartitions
+       private val shuffle = shuffleBlockManager.forMapTask(dep.shuffleId, mapId, numOutputSplits, ser,
+          writeMetrics)
+     }
+ 
+每个Map都对应一个HashShuffleWriter, 通过reduce的分区函数partitioner来确定reduce的个数, 然后通过上面的forMapTask来返回一组FileHandle.
+
+另外我们知道MapReduce中有一个Map端的Combine机制, 即mapSideCombine, 如果需要,那么就需要在write之前进行reduce操作, 详细逻辑如下,
+dep.aggregator.get.combineValuesByKey就为mapSideCombine的逻辑;
+
+    override def write(records: Iterator[_ <: Product2[K, V]]): Unit = {
+        val iter = if (dep.aggregator.isDefined) {
+          if (dep.mapSideCombine) {
+            dep.aggregator.get.combineValuesByKey(records, context)
+          } else {
+            records
+          }
+        } else if (dep.aggregator.isEmpty && dep.mapSideCombine) {
+          throw new IllegalStateException("Aggregator is empty for map-side combine")
+        } else {
+          records
+        }
+    
+        for (elem <- iter) {
+          val bucketId = dep.partitioner.getPartition(elem._1)
+          shuffle.writers(bucketId).write(elem)
+        }
+      }
+
+我们知道每个MapTask运行结束以后,需要请求FileShuffleBlockManager关闭相应的writers,并向Driver返回一个MapStatus,从而可以被reduce操作定位Map的位置,
+这部分逻辑就是commitWritesAndBuildStatus来实现的
+
+    private def commitWritesAndBuildStatus(): MapStatus = {
+        val sizes: Array[Long] = shuffle.writers.map { writer: BlockObjectWriter =>
+          writer.commitAndClose()
+          writer.fileSegment().length
+        }
+        MapStatus(blockManager.blockManagerId, sizes)
+      }
+      shuffle.releaseWriters(success)
+
+在commitWritesAndBuildStatus中统计每个reduce的大小,并关闭每个reduce的writer, 最后返回MapStatus; 
+在commitWritesAndBuildStatus执行完成以后就请求FileShuffleBlockManager调用releaseWriter,关闭FileGroup;
+
+所以整体来说HashShuffleWriter的实现还是很简单的; 通过这里的分析,大家应该对《[Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)》中ShuffleMapStage应该有更
+深入的认识了;
+
+###HashShuffleReader的实现;
+这里我不打算继续讲HashShuffleReader,为什么?如果大家打开SortShuffleManager,我们就会发现, 它也是使用HashShuffleReader. 这么说就是HashShuffleReader
+和具体的ShuffleManager无关,在分析完SortShuffleManager我们再统一进行分析;
+
+##HashShuffleReader
+
+
 
 
 
