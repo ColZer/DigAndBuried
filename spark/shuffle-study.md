@@ -1,4 +1,6 @@
-# Spark shuffle研究
+Spark基础以及Shuffle深究
+============
+
 版本：1.1.0
 
 不管是hadoop中map/reduce还是spark中各种算子，shuffle过程都是其中核心过程，shuffle的设计是否高效，基本确定了整个计算过程是否高效。
@@ -800,3 +802,32 @@ reduce的数据?
 这两个问题需要开一章来分析,这里我就不进行阐述了;这节的目前已经解释清楚了Shuffle的Map过程的实现原理;基本上Shuffle已经走通了一半了;
 
 ###ShuffledRDD的实现过程
+上面讲到了,Shuffle过程是包括Map和Reduce两个过程;其中Shuffle Map以ShuffleMapStage的形式存在, Shuffle Reduce被抽象为一个RDD,该RDD的compute函数有点特殊而已,
+如下所示:
+
+    override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+        val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
+        SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
+          .read()
+          .asInstanceOf[Iterator[(K, C)]]
+      }
+
+即它通过shuffleManager来拉取特定reduceid的数据:"split.index, split.index + 1"; 下面拿个例子说明
+    
+    scala> val a = sc.parallelize(List("dog", "tiger", "lion", "cat", "spider", "eagle"), 2)
+    a: org.apache.spark.rdd.RDD[String] = ParallelCollectionRDD[3] at parallelize at <console>:12
+    
+    scala> val b = a.keyBy(_.length)
+    b: org.apache.spark.rdd.RDD[(Int, String)] = MappedRDD[4] at keyBy at <console>:14
+    
+    scala> b.groupByKey
+    res2: org.apache.spark.rdd.RDD[(Int, Iterable[String])] = ShuffledRDD[5] at groupByKey at <console>:17
+
+第三步就会生成一个ShuffledRDD, 而第二步生成的 MappedRDD到第三步的ShuffledRDD需要经过一次ShuffleMap的过程;
+
+对了,还有一个东西:就是上面谈到MapOutputTracker,我们知道MapStatus是在Task运行结束的时候被添加到Tracker,但是我们还没有说过什么时候会通过MapOutputTrackerWorker
+来读取Mapstatus, 具体的细节不进一步阐述,它就发生在我们上面阐述的"SparkEnv.get.shuffleManager.getReader.read"中间, 因为每个Reduce需要去拉取该reduce的所有输出的地理位置,
+这些都需要去问MapOutputTracker.
+
+OK, 到目前我们已经解释清楚了Spark Shuffle过程, 虽然还有两个问题没有进一步阐述,但是已经足够可以理解Shuffle的实现过程;至于那两个问题,后面有时间再开文写吧
+end!

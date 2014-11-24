@@ -1,4 +1,5 @@
-# Spark 闭包中ClosureCleaner操作
+Spark 闭包中ClosureCleaner操作
+============
 
 在Scala，函数是第一等公民，可以作为参数的值传给相应的rdd转换和动作，进而进行迭代处理。
 阅读spark源码，我们发现，spark对我们所传入的所有闭包函数都做了一次sc.clean操作，如下
