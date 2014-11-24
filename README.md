@@ -9,8 +9,7 @@
 这里挖一个这个坑，由于第一个坑，所以我会在这个坑里面阐述大量的spark基础的东西，顺便对这些基础做一下整理,包括Job的执行过程中等;
 
 +   开始埋坑日期：2014-9-24
-+   期望完成日期：2014-12-7
-+   坑状态：doing
++   坑状态：done
 
 ### [Spark-Block管理](./spark/spark-block-manager.md)
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑。
