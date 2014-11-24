@@ -830,4 +830,6 @@ reduce的数据?
 这些都需要去问MapOutputTracker.
 
 OK, 到目前我们已经解释清楚了Spark Shuffle过程, 虽然还有两个问题没有进一步阐述,但是已经足够可以理解Shuffle的实现过程;至于那两个问题,后面有时间再开文写吧
+
+=======
 end!
