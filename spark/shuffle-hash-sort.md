@@ -1,4 +1,4 @@
-HashShuffleManager和SortShuffleManager实现分析
+HashShuffle和SortShuffleManager实现分析
 =====
 
 在上一篇文章中，我们说到Shuffle包括ShuffleMapStage和ShuffledRDD两步骤，分别对应了Shuffle的Map和Reduce；在这两个步骤中ShuffleManager充当了很重要的角色。
