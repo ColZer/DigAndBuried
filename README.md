@@ -12,7 +12,7 @@
 +   坑状态：done
 
 ### [HashShuffle和SortShuffle的实现分析](./spark/shuffle-hash-sort.md)
-在[Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)中分析了Spark的Shuffle的实现,但是其中遗留了两个问题. 
+在《[Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)》中分析了Spark的Shuffle的实现,但是其中遗留了两个问题. 
 本文针对第二个问题:"具体shuffleManager和shuffleBlockManager的实现"进行分析, 即HashShuffle和SortShuffle当前Spark中支持了两种ShuffleManager的实现;
 其中SortShuffle是spark1.1版本发布的,详情参见:[Sort-based shuffle implementation](https://issues.apache.org/jira/browse/SPARK-2045)
 本文将对这两种Shuffle的实现进行分析.
