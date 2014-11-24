@@ -295,7 +295,7 @@ dep.aggregator.get.combineValuesByKey就为mapSideCombine的逻辑;
 这里我不打算继续讲HashShuffleReader,为什么?如果大家打开SortShuffleManager,我们就会发现, 它也是使用HashShuffleReader. 这么说就是HashShuffleReader
 和具体的ShuffleManager无关,在分析完SortShuffleManager我们再统一进行分析;
 
-##HashShuffleReader
+##SortShuffleManager
 
 
 
