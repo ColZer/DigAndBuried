@@ -551,12 +551,252 @@ MapOut,
 ## Shuffle Job的执行过程
 我们知道Shuffle包含两个过程中,即Shuffle Map过程以及Shuffle Reduce;这里详细解释一下;
 
->   上面我们谈到了Shuffle Stage,其实是Shuffle Map的过程,即Shuffle Stage的ShuffleTask按照一定的规则将数据写到相应的文件中,并把写的信息以MapOutput返回给DAGScheduler
->   MapOutput将它更新到特定位置就完成了整个Shuffle Map过程.  
+>   上面我们谈到了Shuffle Stage,其实是Shuffle Map的过程,即Shuffle Stage的ShuffleTask按照一定的规则将数据写到相应的文件中,并把写的文件"位置信息"
+>   以MapOutput返回给DAGScheduler ,MapOutput将它更新到特定位置就完成了整个Shuffle Map过程.  
 >   在Spark中,Shuffle reduce过程抽象化为ShuffledRDD,即这个RDD的compute方法计算每一个分片即每一个reduce的数据是通过拉取ShuffleMap输出的文件并返回Iterator来实现的
 
 上面两句话基本上表述清楚了Spark的Shuffle的过程,下面我们会针对ShuffleMap和ShuffledRDD的实现分别进行阐述
 
 ###Shuffle Map过程
+对于ShuffleMap的过程的认识,首先需要解释其中一个组件的功能:MapOutputTracker;
+
+####MapOutputTracker
+写这部分的代码的人肯定写过Hadoop的代码,Tracker的命名方式在Hadoop很常见,但是在Spark中就好像仅此一处;Hadoop中Track对我的影响就是提供一个对象的访问入口,详细可以
+参见其他几篇对NodeManager的分析;在这里的MapOutputTracker,也是为MapOutput提供一个访问入口;
+
+首先MapOutput是什么?MapStatus; 每个Shuffle都对应一个ShuffleID,该ShuffleID下面对应多个MapID,每个MapID都会输出一个MapStatus,通过该MapStatus,可以定位每个
+MapID所对应的ShuffleMapTask运行过程中所对应的机器;
+
+MapOutputTracker也是提供了这样的接口,可以把每个Map输出的MapStatus注册到Tracker,同时Tracker也提供了访问接口,可以从该Tracker中读取指定每个ShuffleID所对应的map输出的位置;
+
+同时MapOutputTracker也是主从结构,其中Master提供了将Map输出注册到Tracker的入口, slave运行在每个Executor上,提供读取入口, 但是这个读取过程需要和Master进行交互,将指定的
+ShuffleID所对应的MapStatus信息从Master中fetch过来;
+
+好了,下面我们具体来分析实现;
+
+    private[spark] class MapOutputTrackerMaster(conf: SparkConf){
+      protected val mapStatuses = new TimeStampedHashMap[Int, Array[MapStatus]]()
+          
+      def registerShuffle(shuffleId: Int, numMaps: Int) {
+        if (mapStatuses.put(shuffleId, new Array[MapStatus](numMaps)).isDefined) {
+          throw new IllegalArgumentException("Shuffle ID " + shuffleId + " registered twice")
+        }
+      }    
+      def registerMapOutput(shuffleId: Int, mapId: Int, status: MapStatus) {
+        val array = mapStatuses(shuffleId)
+        array.synchronized {
+          array(mapId) = status
+        }
+      }
+      def getSerializedMapOutputStatuses(shuffleId: Int): Array[Byte] = {
+          var statuses: Array[MapStatus] = null
+          statuses = mapStatuses.getOrElse(shuffleId, Array[MapStatus]())
+          val bytes = MapOutputTracker.serializeMapStatuses(statuses)
+          bytes
+      }
+
+上面是运行在Driver中MapOutputTrackerMaster的实现,它其中包含了一个mapStatuses的TimeStampedHashMap,通过shuffleID进行索引,存储了所有注册到tracker的Shuffle,
+通过registerShuffle可以进行注册Shuffle, 通过registerMapOutput可以在每次ShuffleMapTask结束以后,将Map的输出注册到Track中;  同时提供了getSerializedMapOutputStatuses接口
+将一个Shuffle所有的MapStatus进行序列化并进行返回;
+
+现在你肯定会为问:什么时候会进行registerShuffle和registerMapOutput的注册?这里简单回答一下:在创建Stage过程中,如果遇到了ShuffleStage,那么就会进行registerShuffle的注册;
+在上面谈到的handleTaskCompletion时候, 如果这里的Task是ShuffleMapTask, 就会调用registerMapOutput将结果进行注册;(具体的实现其实有点差别,为了保存简单,就不去阐述这个差别)
+
+上面我说了,MapOutputTrackerMaster是一个主从结构的Master,但是我们这里没有看到通信的实现, 在Master中,通信的实现是使用MapOutputTrackerMasterActor来实现的;
+
+    private[spark] class MapOutputTrackerMasterActor(tracker: MapOutputTrackerMaster, conf: SparkConf)
+      extends Actor with ActorLogReceive with Logging {    
+      override def receiveWithLogging = {
+        case GetMapOutputStatuses(shuffleId: Int) =>
+          val hostPort = sender.path.address.hostPort
+          val mapOutputStatuses = tracker.getSerializedMapOutputStatuses(shuffleId)
+          sender ! mapOutputStatuses
+      }
+    }
+
+它对外提供了GetMapOutputStatuses的入口,slave通过该消息从Master中读取指定Shuffle的MapStatus; 
+
+    private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTracker(conf) {      
+      protected val mapStatuses: Map[Int, Array[MapStatus]] =
+        new ConcurrentHashMap[Int, Array[MapStatus]]
+        
+      private val fetching = new HashSet[Int]
+      
+      protected def sendTracker(message: Any) {
+          val response = askTracker(message)
+          if (response != true) {
+            throw new SparkException(
+              "Error reply received from MapOutputTracker. Expecting true, got " + response.toString)
+          }
+       }
+      def getServerStatuses(shuffleId: Int, reduceId: Int): Array[(BlockManagerId, Long)] = {
+          val statuses = mapStatuses.get(shuffleId).orNull
+          if (statuses == null) {
+            var fetchedStatuses: Array[MapStatus] = null
+            fetching.synchronized {
+              if (fetching.contains(shuffleId)) {
+                while (fetching.contains(shuffleId)) {
+                  try {
+                    fetching.wait()
+                  } catch {
+                    case e: InterruptedException =>
+                  }
+                }
+              }
+              fetchedStatuses = mapStatuses.get(shuffleId).orNull
+              if (fetchedStatuses == null) {
+                fetching += shuffleId
+              }
+            }
+      
+            if (fetchedStatuses == null) {
+              try {
+                val fetchedBytes =
+                  askTracker(GetMapOutputStatuses(shuffleId)).asInstanceOf[Array[Byte]]
+                fetchedStatuses = MapOutputTracker.deserializeMapStatuses(fetchedBytes)
+                mapStatuses.put(shuffleId, fetchedStatuses)
+              } finally {
+                fetching.synchronized {
+                  fetching -= shuffleId
+                  fetching.notifyAll()
+                }
+              }
+            }
+            if (fetchedStatuses != null) {
+              fetchedStatuses.synchronized {
+                return MapOutputTracker.convertMapStatuses(shuffleId, reduceId, fetchedStatuses)
+              }
+            } else {
+              throw new MetadataFetchFailedException(
+                shuffleId, reduceId, "Missing all output locations for shuffle " + shuffleId)
+            }
+          } else {
+            statuses.synchronized {
+              return MapOutputTracker.convertMapStatuses(shuffleId, reduceId, statuses)
+            }
+          }
+        }
+    }
+
+MapOutputTrackerWorker为上面的slave, 它的实现很简单,核心功能就是getServerStatuses, 它获取指定Shuffle的每个reduce所对应的MapStatus信息; 想想看, mapTask按照Map
+为单位进行输出,而reduceTask肯定是按照reduce为单独进行读取,这也是为什么getServerStatuses有一个reduceId的参数; 具体的我们在ShuffledRDD的实现中来分析;
+
+上面基本分析完了MapOutputTracker,从逻辑上还是比较单独, 但是在整个Shuffle过程中很重要,它存储了Shuffle Map所有的输出;
+
+####Map按照什么规则进行output?--ShuffleManager的实现
+上面我们说每个shuffleMapStage由多个map组成,每个map将该map中属于每个reduce的数据按照一定规则输出到"文件"中,并返回MapStatus给Driver;这里还有几个问题?
+
++   每个mapTask按照什么规则进行write?
++   每个reduceTask按照什么规则进行reduce?因为每个reduceTask通过shuffleID和Reduce,只能获取一组表示map输出的mapStatus,reduce怎么从这组mapStatus读取指定
+reduce的数据?
+
+这一切都是由ShuffleManager来实现的. 各个公司都说自己针对Shuffle做了什么优化来提供Spark的性能,本质上就是对ShuffleManager进行优化和提供新的实现;
+在1.1以后版本的Spark中ShuffleManager实现为可插拨的接口, 用户可以实现自己的ShuffleManager, 同时提供了两个默认的ShuffleManager的实现;
+
+    val shortShuffleMgrNames = Map(
+          "hash" -> "org.apache.spark.shuffle.hash.HashShuffleManager",
+          "sort" -> "org.apache.spark.shuffle.sort.SortShuffleManager")
+    val shuffleMgrName = conf.get("spark.shuffle.manager", "sort")
+    val shuffleMgrClass = shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase, shuffleMgrName)
+    val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)
+
+即老版本的HashShuffleManager和1.1新发布的SortShuffleManager, 可以通过"spark.shuffle.manager""进行配置,默认为SortShuffleManager. 
+
+在看具体的ShuffleManager的实现之前,我们先看看ShuffleManager接口提供了哪些功能:
+
+    private[spark] class BaseShuffleHandle[K, V, C](
+        shuffleId: Int,
+        val numMaps: Int,
+        val dependency: ShuffleDependency[K, V, C])
+      extends ShuffleHandle(shuffleId)
+    
+    private[spark] trait ShuffleManager {
+      def registerShuffle(shuffleId: Int, numMaps: Int,dependency: ShuffleDependency): ShuffleHandle
+    
+      def getWriter(handle: ShuffleHandle, mapId: Int, context: TaskContext): ShuffleWriter
+    
+      def getReader(handle: ShuffleHandle,startPartition: Int,endPartition: Int,context: TaskContext): ShuffleReader
+      
+      def unregisterShuffle(shuffleId: Int): Boolean
+    
+      def shuffleBlockManager: ShuffleBlockManager
+    
+      def stop(): Unit
+    }
+
+首先看上面的ShuffleHandle的实现, 它只是一个shuffleId, numMaps和ShuffleDep的封装; 再看ShuffleManager提供的接口;
+
++   registerShuffle/unregisterShuffle:提供了Shuffle的注册和注销的功能, 和上面谈到的MapOutputTracker一直,特别是注册返回的ShuffleHandle来对shuffle的一个封装
++   getWriter:针对一个mapTask返回一组Writer,为什么是一组?因为需要针对mapTask上每个可能的reduce提供一个Writer, 所以是一组
++   getReader:提供Start分区编号和end分区编号;当然一般情况如果每个reduce单独运行,那么start-end区间也只对应一个reduce, HashShuffleManager也支持一个reduce
+
+最下面有一个ShuffleBlockManager, 和Spark内部的BlockManager相似, 只是把Shuffle的write/reduce都抽象为block的操作, 并由ShuffleBlockManager进行Block管理;
+关于这点可以参考Spark内部的BlockManager的getBlockData
+    
+    override def getBlockData(blockId: String): Option[ManagedBuffer] = {
+        val bid = BlockId(blockId)
+        if (bid.isShuffle) {
+          Some(shuffleManager.shuffleBlockManager.getBlockData(bid.asInstanceOf[ShuffleBlockId]))
+        } else {
+          val blockBytesOpt = doGetLocal(bid, asBlockResult = false).asInstanceOf[Option[ByteBuffer]]
+          if (blockBytesOpt.isDefined) {
+            val buffer = blockBytesOpt.get
+            Some(new NioByteBufferManagedBuffer(buffer))
+          } else {
+            None
+          }
+        }
+      }
+
+我们看到, Spark的BlockManager还是所有的Block的访问入口,如果访问的Block是ShuffleBlock, 会把读取的入口转移到"shuffleManager.shuffleBlockManager"进行读取;
+
+但是站在ShuffleManager的角度来看, 基本上不会对ShuffleBlock按照BlockID进行直接访问,至少很少, 都是通过getWriter和getReader进行访问;
+
+我们先不对具体的ShuffleManager的实现进行研究,我们先看看ShuffleManager是怎么被实现的; 
+
+上面我们谈到,在ShuffleMapTask中, mapTask按照一定规则进行write操作,那么我们就来看看ShuffleMapTask的实现;
+
+    private[spark] class ShuffleMapTask(
+        stageId: Int,
+        taskBinary: Broadcast[Array[Byte]],
+        partition: Partition,
+        @transient private var locs: Seq[TaskLocation])
+      extends Task[MapStatus](stageId, partition.index) with Logging {
+        
+      override def runTask(context: TaskContext): MapStatus = {
+        val ser = SparkEnv.get.closureSerializer.newInstance()
+        val (rdd, dep) = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
+          ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
+    
+        metrics = Some(context.taskMetrics)
+        var writer: ShuffleWriter[Any, Any] = null
+        try {
+          val manager = SparkEnv.get.shuffleManager
+          writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
+          writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
+          return writer.stop(success = true).get
+        } catch {
+          case e: Exception =>
+            try {
+              if (writer != null) {
+                writer.stop(success = false)
+              }
+            } catch {
+              case e: Exception =>log.debug("Could not stop writer", e)
+            }
+            throw e
+        }
+      }
+    }
+
+核心就是ShuffleMapTask.runTask的实现, 每个运行在Executor上的Task, 通过SparkEnv获取shuffleManager对象, 然后调用getWriter来当前MapID=partitionId的一组Writer.
+然后将rdd的迭代器传递给writer.write函数, 由每个Writer的实现去实现具体的write操作;
+
+这里就很详细解释了shuffleManager怎么解决"每个mapTask按照什么规则进行write?"这个问题; 关于ShuffleMap还有几个问题没有没有进行解释:
+
++   Job中的ShuffleStage是怎么划分出来的呢?即Step5.1中getParentStages(rdd, jobId)的实现;
++   具体shuffleManager和shuffleBlockManager的实现的分析;
+
+这两个问题需要开一章来分析,这里我就不进行阐述了;这节的目前已经解释清楚了Shuffle的Map过程的实现原理;基本上Shuffle已经走通了一半了;
 
 ###ShuffledRDD的实现过程
