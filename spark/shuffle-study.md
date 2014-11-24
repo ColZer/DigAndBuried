@@ -397,26 +397,25 @@ Step6是对Stage到Task的拆分,首先利于上面说到的Stage知识获取所
     +   对于ShuffleStage序列化的是RDD和shuffleDep;而对FinalStage序列化的是RDD和Func
     +   怎么解释呢?对于FinalStage我们知道,每个Task运行过程中,需要知道RDD和运行的函数,比如我们这里讨论的Count实现的Func;而对于ShuffleStage,没有所有Func,
     它的task运行过程肯定是按照ShuffleDep的要求,将Map output到相同的物理位置;所以它需要将ShuffleDep序列化出去
-    
-    
-        class ShuffleDependency[K, V, C](
-            @transient _rdd: RDD[_ <: Product2[K, V]],
-            val partitioner: Partitioner,
-            val serializer: Option[Serializer] = None,
-            val keyOrdering: Option[Ordering[K]] = None,
-            val aggregator: Option[Aggregator[K, V, C]] = None,
-            val mapSideCombine: Boolean = false)
-          extends Dependency[Product2[K, V]] {
-        
-          override def rdd = _rdd.asInstanceOf[RDD[Product2[K, V]]]
-        
-          val shuffleId: Int = _rdd.context.newShuffleId()
-        
-          val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
-            shuffleId, _rdd.partitions.size, this)
-        
-          _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
-        }
+  
+            class ShuffleDependency[K, V, C](
+                @transient _rdd: RDD[_ <: Product2[K, V]],
+                val partitioner: Partitioner,
+                val serializer: Option[Serializer] = None,
+                val keyOrdering: Option[Ordering[K]] = None,
+                val aggregator: Option[Aggregator[K, V, C]] = None,
+                val mapSideCombine: Boolean = false)
+              extends Dependency[Product2[K, V]] {
+            
+              override def rdd = _rdd.asInstanceOf[RDD[Product2[K, V]]]
+            
+              val shuffleId: Int = _rdd.context.newShuffleId()
+            
+              val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
+                shuffleId, _rdd.partitions.size, this)
+            
+              _rdd.sparkContext.cleaner.foreach(_.registerShuffleForCleanup(this))
+            }
 
     上面就是ShuffleDependency,我们看到ShuffleDep包含了partitioner告诉我们要按照什么分区函数将Map分Bucket进行输出, 有serializer告诉我们怎么对Map的输出进行
     序列化, 有keyOrdering和aggregator告诉我们怎么按照Key进行分Bucket,已经怎么进行合并,以及mapSideCombine告诉我们是否需要进行Map端reduce;  
