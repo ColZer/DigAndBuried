@@ -3,7 +3,7 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
-### [Spark基础以及Shuffle深究](./spark/shuffle-study.md)
+### [Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)
 包括mapreduce和spark在内的所有离线计算工具，shuffle操作永远是设计最为笨重的，也是整体计算性能的瓶颈。主要原因是shuffle操作是不可避免的，
 而且它涉及到大量的本地IO，网络IO，甚至会占用大量的内存，CPU来做sort-based shuffle相关的操作。
 这里挖一个这个坑，由于第一个坑，所以我会在这个坑里面阐述大量的spark基础的东西，顺便对这些基础做一下整理,包括Job的执行过程中等;
