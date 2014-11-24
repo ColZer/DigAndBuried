@@ -398,6 +398,7 @@ Step6是对Stage到Task的拆分,首先利于上面说到的Stage知识获取所
     +   怎么解释呢?对于FinalStage我们知道,每个Task运行过程中,需要知道RDD和运行的函数,比如我们这里讨论的Count实现的Func;而对于ShuffleStage,没有所有Func,
     它的task运行过程肯定是按照ShuffleDep的要求,将Map output到相同的物理位置;所以它需要将ShuffleDep序列化出去
     
+    
         class ShuffleDependency[K, V, C](
             @transient _rdd: RDD[_ <: Product2[K, V]],
             val partitioner: Partitioner,
