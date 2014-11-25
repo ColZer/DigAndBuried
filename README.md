@@ -18,15 +18,23 @@
 本文将对这两种Shuffle的实现进行分析.
 
 +   开始埋坑日期：2014-11-24
-+   期望完成日期：2014-12-01
-+   坑状态：doing
-
++   坑状态：done
 
 ### [Spark-Block管理](./spark/spark-block-manager.md)
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑。
 
 +   开始埋坑日期:2014-9-25
 +   坑状态：done
+
+### [Spark-Block的BlockTransferService](./spark/spark-block-manager.md)
+在上面的Spark-BlockManager中,我们基本了解了整个BlockManager的结构,但是在分析Spark Shuffle时候,我发现我遗留了对BlockTransferService的分析,
+毕竟Spark的Shuffle的reduce过程,需要从远程来获取Block;在上面的文章中,对于remoteGET,分析到BlockTransferService就停止了,这里补上;  
+
+其实个人在0.91版本就遇到一个remoteGet的bug, 即当时remoteGet没有进行超时控制,消息丢包导致假死, 当然目前版本没有这个问题了. 具体的我会在这篇文章中进行解释;
+
++   开始埋坑日期:2014-11-25
++   期望完成日期：2014-12-10
++   坑状态：doing
 
 ### [Spark闭包清理的理解](./spark/function-closure-cleaner.md)
 scala是一门函数编程语言，当然函数，方法，闭包这些概念也是他们的核心，在阅读spark的代码过程，也充斥着大量关于scala函数相关的特性引用，比如：
