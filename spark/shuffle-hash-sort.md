@@ -296,7 +296,142 @@ dep.aggregator.get.combineValuesByKey就为mapSideCombine的逻辑;
 和具体的ShuffleManager无关,在分析完SortShuffleManager我们再统一进行分析;
 
 ##SortShuffleManager
+在HashShuffleManager中,不管是否支持consolidateFiles, 同一个map的多个reduce之间都对应了不同的文件,至于对应哪个文件,是由分区函数进行Hash来确定的;
+这是为什么它要叫做HashShuffleManager.
 
+下面要介绍的SortShuffleManager和HashShuffleManager有一个本质的差别,即同一个map的多个reduce的数据都写入到同一个文件中;那么SortShuffleManager产生的Shuffle
+文件个数为2*Map个数; 不是说,每个map只对应一个文件吗?为什么要乘以2呢?下面我们来一一分析;
+
+    private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager {
+    
+      private val indexShuffleBlockManager = new IndexShuffleBlockManager()
+      private val shuffleMapNumber = new ConcurrentHashMap[Int, Int]()
+    
+      override def getReader[K, C](
+          handle: ShuffleHandle,startPartition: Int,endPartition: Int,context: TaskContext): ShuffleReader= {
+        new HashShuffleReader(
+          handle.asInstanceOf[BaseShuffleHandle[K, _, C]], startPartition, endPartition, context)
+      }
+    
+      override def getWriter[K, V](handle: ShuffleHandle, mapId: Int, context: TaskContext)
+          : ShuffleWriter[K, V] = {
+        val baseShuffleHandle = handle.asInstanceOf[BaseShuffleHandle[K, V, _]]
+        shuffleMapNumber.putIfAbsent(baseShuffleHandle.shuffleId, baseShuffleHandle.numMaps)
+        new SortShuffleWriter(
+          shuffleBlockManager, baseShuffleHandle, mapId, context)
+      }
+    
+      override def shuffleBlockManager: IndexShuffleBlockManager = {
+        indexShuffleBlockManager
+      }
+    }
+
+和HashShuffleManager一下, SortShuffleManager的主要的功能是依赖IndexShuffleBlockManager, HashShuffleReader, SortShuffleWriter三个类来实现;其中IndexShuffleBlockManager
+管理Shuffle的文件,而和HashShuffleManager不一样,IndexShuffleBlockManager的复杂度很小,反而SortShuffleWriter是SortShuffleManager的核心, 
+它实现了一个map的所有的reduce数据怎么写到一个文件中(先透露一下,对该map的数据进行外部排序,这样属于每个reduce的数据就为排序后文件的一个文件段);而HashShuffleReader
+的实现和HashShuffleManager一致;
+
+下面我们先分析IndexShuffleBlockManager;
+
+    @DeveloperApi
+    case class ShuffleDataBlockId(shuffleId: Int, mapId: Int, reduceId: Int) extends BlockId {
+      def name = "shuffle_" + shuffleId + "_" + mapId + "_" + reduceId + ".data"
+    }
+    
+    @DeveloperApi
+    case class ShuffleIndexBlockId(shuffleId: Int, mapId: Int, reduceId: Int) extends BlockId {
+      def name = "shuffle_" + shuffleId + "_" + mapId + "_" + reduceId + ".index"
+    }
+
+首先,在IndexShuffleBlockManager中,针对每个Map有两个文件,一个是index文件,一个是data文件;这个时候你肯定会问,这里的ShuffleDataBlockId,ShuffleIndexBlockId
+所对应的blockID, 即为最后文件的name, 其中不是把reduceID也作为文件名的一部分吗?难道我说错了?每个map的每个reduce都对应一个Index文件和一个Data文件?
+
+当然不是这样的,那么下面我们就来看IndexShuffleBlockManager的实现
+
+    private[spark]
+    class IndexShuffleBlockManager extends ShuffleBlockManager {    
+      private lazy val blockManager = SparkEnv.get.blockManager
+    
+      def getDataFile(shuffleId: Int, mapId: Int): File = {
+        blockManager.diskBlockManager.getFile(ShuffleDataBlockId(shuffleId, mapId, 0))
+      }
+    
+      private def getIndexFile(shuffleId: Int, mapId: Int): File = {
+        blockManager.diskBlockManager.getFile(ShuffleIndexBlockId(shuffleId, mapId, 0))
+      }
+      
+      def removeDataByMap(shuffleId: Int, mapId: Int): Unit = {
+        getDataFile(shuffleId, mapId).delete()
+        getIndexFile(shuffleId, mapId).delete()
+      }
+      
+      def writeIndexFile(shuffleId: Int, mapId: Int, lengths: Array[Long]) = {
+        val indexFile = getIndexFile(shuffleId, mapId)
+        val out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(indexFile)))
+        var offset = 0L
+        out.writeLong(offset)    
+        for (length <- lengths) {
+          offset += length
+          out.writeLong(offset)
+        }
+      }
+    
+      override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {
+        val indexFile = getIndexFile(blockId.shuffleId, blockId.mapId)    
+        val in = new DataInputStream(new FileInputStream(indexFile))
+        in.skip(blockId.reduceId * 8)
+        val offset = in.readLong()
+        val nextOffset = in.readLong()
+        new FileSegmentManagedBuffer(getDataFile(blockId.shuffleId, blockId.mapId),
+          offset,nextOffset - offset)
+      }
+    }
+
+首先从getDataFile和getIndexFile文件我们看到,获取ShuffleBlockID的时候是把reduceID设置为0, 换句话这就证明上面那个疑问是错误的;然后我就看getBlockData,
+该函数的功能是从当前的ShuffleBlockManager中读取到指定Shuffle reduce的内容:从逻辑上面我们看到, 首先从indexFile中,按照blockId.reduceId * 8的offset
+开始读取一个Long数据,这个Long就代表当前reduce数据在getDataFile中偏移量;再看writeIndexFile,我们就看到,针对一个Map都会生成一个Index文件,
+按照reduce的顺序将她们的offset输出到index文件中; 
+
+到这里你肯定Data文件是怎么输出的?难道是删除了Data文件写的逻辑?不是的;IndexShuffleBlockManager的确只提供了对Index文件管理,至于Data的文件怎么写?那就我们
+接下来需要分析的SortShuffleWriter的实现了;
+
+    private[spark] class SortShuffleWriter[K, V, C](
+        shuffleBlockManager: IndexShuffleBlockManager,
+        handle: BaseShuffleHandle[K, V, C], mapId: Int,  context: TaskContext)
+      extends ShuffleWriter[K, V] with Logging {
+    
+      private val dep = handle.dependency    
+      private val blockManager = SparkEnv.get.blockManager    
+      private var sorter: ExternalSorter[K, V, _] = null
+      override def write(records: Iterator[_ <: Product2[K, V]]): Unit = {
+        if (dep.mapSideCombine) {
+          sorter = new ExternalSorter[K, V, C](
+            dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
+          sorter.insertAll(records)
+        } else {
+          sorter = new ExternalSorter[K, V, V](
+            None, Some(dep.partitioner), None, dep.serializer)
+          sorter.insertAll(records)
+        }
+    
+        val outputFile = shuffleBlockManager.getDataFile(dep.shuffleId, mapId)
+        val blockId = shuffleBlockManager.consolidateId(dep.shuffleId, mapId)
+        val partitionLengths = sorter.writePartitionedFile(blockId, context, outputFile)
+        shuffleBlockManager.writeIndexFile(dep.shuffleId, mapId, partitionLengths)
+    
+        mapStatus = MapStatus(blockManager.blockManagerId, partitionLengths)
+      }
+    }
+
+SortShuffleWriter的实现依赖ExternalSorter.从名称我们就看到它的含义是外部排序的含义, 我们调用sorter.writePartitionedFile(blockId, context, outputFile)将当前分片的
+reduce数据输出到getDataFile(dep.shuffleId, mapId)文件中, 并返回每个reduce的大小, 然后调用writeIndexFile来写index文件;
+
+从这里我们看到, SortShuffleManager本质上对我们的数据进行外部排序,并把排序后文件分为每个reduce段, 并把每个端的偏移量写到index文件中;至于外部排序的具体实现
+我就不去分析了.
+
+现在还ShuffleManager里面还是最后一个大问题就是ShuffleRead,下面我们继续分析;
+
+##ShuffleReader
 
 
 
