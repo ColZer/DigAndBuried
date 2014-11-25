@@ -432,8 +432,175 @@ reduce数据输出到getDataFile(dep.shuffleId, mapId)文件中, 并返回每个
 现在还ShuffleManager里面还是最后一个大问题就是ShuffleRead,下面我们继续分析;
 
 ##ShuffleReader
+在《[Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)》中,我对ShuffledRDD的实现也是简单进行解释了一下,这里通过对ShuffleReader的实现的分析,对Shuffle
+的Reduce步骤进行详细分析;
 
+    class ShuffledRDD[K, V, C](
+        @transient var prev: RDD[_ <: Product2[K, V]],
+        part: Partitioner)
+      extends RDD[(K, C)](prev.context, Nil) {
+        override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+            val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
+            SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
+              .read()
+              .asInstanceOf[Iterator[(K, C)]]
+          }
+     }
 
+上面ShuffledRDD的compute函数,从逻辑我们可以看到, 它是通过shuffleManager.getReader的函数来实现了, 即我们这里要分析的ShuffleReader;
 
+>   我们知道ShuffleMapStage中所有ShuffleMapTask是分散在Executor上的, 每个Map对应一个Task, Task运行结束以后, 会把MapOutput的信息保存在MapStatus返回给Driver,
+>   Driver将其注册到MapOutputTrack中;  到目前为止, ShuffleMapStage的过程就执行完成了;
+>   
+>   ShuffledRDD会为每个reduce创建一个分片, 对于运行在Executor A上的shuffleRDD的一个分片的Task, 为了获取该分片的对于的Reduce数据, 它需要向MapOutputTrack获取
+>   指定ShuffleID的所有的MapStatus, 由于MapOutputTrack是一个主从结构, 获取MapStatus也涉及到Executor A请求Driver的过程. 一旦获得该Shuffle所对于的所有的MapStatus,
+>   该Task从每个MapStatus所对应的Map节点(BlockManager节点)去拉取指定reduce的数据, 并把所有的数据组合为Iterator, 从而完成ShuffledRDD的compute的过程;
 
+上面即ShuffledRDD的compute过程的描述,下面我们来一步一步看每步的实现, 同时找出原因,为什么针对不同的ShuffleManager,都可以使用同一个ShuffleReader: HashShuffleReader
+
+    private[spark] class HashShuffleReader[K, C](
+        handle: BaseShuffleHandle[K, _, C],startPartition: Int,endPartition: Int,
+        context: TaskContext)extends ShuffleReader[K, C]    {
+        
+      private val dep = handle.dependency
+    
+      override def read(): Iterator[Product2[K, C]] = {
+        val ser = Serializer.getSerializer(dep.serializer)
+        
+        val iter = BlockStoreShuffleFetcher.fetch(handle.shuffleId, startPartition, context, ser)
+    
+        val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
+          if (dep.mapSideCombine) {
+            new InterruptibleIterator(context, dep.aggregator.get.combineCombinersByKey(iter, context))
+          } else {
+            new InterruptibleIterator(context, dep.aggregator.get.combineValuesByKey(iter, context))
+          }
+        } else if (dep.aggregator.isEmpty && dep.mapSideCombine) {
+          throw new IllegalStateException("Aggregator is empty for map-side combine")
+        } else {
+          iter.asInstanceOf[Iterator[Product2[K, C]]].map(pair => (pair._1, pair._2))
+        }
+        aggregatedIter
+      }
+
+从HashShuffleReader的代码来看, 它的逻辑很简洁, 其中核心就是通过BlockStoreShuffleFetcher.fetch获取指定reduce的所有的数据, 因此fetch就是我们上面说去每个
+Map拉取数据的过程.
+
+    private[hash] object BlockStoreShuffleFetcher extends Logging {
+      def fetch[T](shuffleId: Int,reduceId: Int,context: TaskContext,serializer: Serializer)
+        : Iterator[T] ={
+        val blockManager = SparkEnv.get.blockManager    
+        val statuses = SparkEnv.get.mapOutputTracker.getServerStatuses(shuffleId, reduceId)    
+    
+        val blockFetcherItr = new ShuffleBlockFetcherIterator(
+          context, SparkEnv.get.blockTransferService,blockManager,blocksByAddress,
+          serializer,SparkEnv.get.conf.getLong("spark.reducer.maxMbInFlight", 48) * 1024 * 1024)
+          
+        val itr = blockFetcherItr.flatMap(unpackBlock)            
+        new InterruptibleIterator[T](context, itr)
+      }
+    }
+
+BlockStoreShuffleFetcher里面也没有完成实现fetch逻辑,而是交给ShuffleBlockFetcherIterator进行fetch, 但是获取指定Shuffle的所有reduce的MapStatus是这步进行的
+即调用SparkEnv.get.mapOutputTracker.getServerStatuses(shuffleId, reduceId)来实现的;
+
+那么下面就剩下了ShufflerRead最后一个步骤了,即 ShuffleBlockFetcherIterator的实现;
+
+ShuffleBlockFetcherIterator接受的参数中一个参数就是指定的Shuffle的所有MapStatus信息,每个MapStatus其实是代表一个BlockManager的地址信息;那么就存在Local和Remote的
+差别,如果是Local就可以直接通过本地的ShuffleBlockManager读取, 否则就去发起请求去远程读取.
+
+因此第一个问题就是怎么对MapStatus进行划分, 划分为Local和Remote两个类别,即ShuffleBlockFetcherIterator. splitLocalRemoteBlocks的实现
+
+    private[this] def splitLocalRemoteBlocks(): ArrayBuffer[FetchRequest] = {
+    
+        val remoteRequests = new ArrayBuffer[FetchRequest]
+    
+        var totalBlocks = 0
+        for ((address, blockInfos) <- blocksByAddress) {
+          totalBlocks += blockInfos.size
+          if (address == blockManager.blockManagerId) {
+            localBlocks ++= blockInfos.filter(_._2 != 0).map(_._1)
+            numBlocksToFetch += localBlocks.size
+          } else {
+            val iterator = blockInfos.iterator
+            var curRequestSize = 0L
+            var curBlocks = new ArrayBuffer[(BlockId, Long)]
+            while (iterator.hasNext) {
+              val (blockId, size) = iterator.next()
+              if (size > 0) {
+                curBlocks += ((blockId, size))
+                remoteBlocks += blockId
+                numBlocksToFetch += 1
+                curRequestSize += size
+              } 
+              if (curRequestSize >= targetRequestSize) {
+                remoteRequests += new FetchRequest(address, curBlocks)
+                curBlocks = new ArrayBuffer[(BlockId, Long)]
+                curRequestSize = 0
+              }
+            }
+            // Add in the final request
+            if (curBlocks.nonEmpty) {
+              remoteRequests += new FetchRequest(address, curBlocks)
+            }
+          }
+        }
+        remoteRequests
+      }
+  
+splitLocalRemoteBlocks有两个过程, 第一判读当前MapStatus是不是Local,是就添加到localBlocks中, 否则就针对remote构造FetchRequest消息包并返回.
+
+那么我们下面再一个一个来分析, Local的ShuffleBlock是怎么读取的?
+
+    private[this] def fetchLocalBlocks() {
+        for (id <- localBlocks) {
+            shuffleMetrics.localBlocksFetched += 1
+            results.put(new FetchResult(
+              id, 0, () => blockManager.getLocalShuffleFromDisk(id, serializer).get))          
+        }
+      }
+    def getLocalShuffleFromDisk(blockId: BlockId, serializer: Serializer): Option[Iterator[Any]] = {
+        val buf = shuffleManager.shuffleBlockManager.getBlockData(blockId.asInstanceOf[ShuffleBlockId])
+        val is = wrapForCompression(blockId, buf.inputStream())
+        Some(serializer.newInstance().deserializeStream(is).asIterator)
+    }
+
+我们看到LocalBlock的获取最后就是基于每个ShuffleManager的ShuffleBlockManager的getBlockData的来实现, 在上面ShuffleManager中,我们就分析了具体的getBlockData的实现.
+
+那remoteBlock是怎么获取的?
+
+    private[this] def sendRequest(req: FetchRequest) {
+        bytesInFlight += req.size
+    
+        val sizeMap = req.blocks.map { case (blockId, size) => (blockId.toString, size) }.toMap
+        val blockIds = req.blocks.map(_._1.toString)
+    
+        blockTransferService.fetchBlocks(req.address.host, req.address.port, blockIds,
+          new BlockFetchingListener {
+            override def onBlockFetchSuccess(blockId: String, data: ManagedBuffer): Unit = {
+              results.put(new FetchResult(BlockId(blockId), sizeMap(blockId),
+                () => serializer.newInstance().deserializeStream(
+                  blockManager.wrapForCompression(BlockId(blockId), data.inputStream())).asIterator
+              ))
+              shuffleMetrics.remoteBytesRead += data.size
+              shuffleMetrics.remoteBlocksFetched += 1
+            }
+    
+            override def onBlockFetchFailure(e: Throwable): Unit = {
+              for ((blockId, size) <- req.blocks) {
+                results.put(new FetchResult(blockId, -1, null))
+              }
+            }
+          }
+        )
+      }
+
+我们看到远程获取Block其实是基于blockTransferService来实现的,其实这个内容是BlockManager的BlockTransferService,这里我就不具体去分析,下一步我会写一个关于BlockTransferService
+的实现,其实这块在0.91就遇到一个一个Bug,就是fetch永远等待导致job假死;后面再具体分析
+
+到目前我们应该了解了ShuffleReader的功能, 级别上两种ShuffleManager的实现,我们就分析完了, 从上面分析我们可以看到SortShuffleManager创建小文件的数目应该是
+最小的,而且Map输出是有序的, 在reduce过程中如果要进行有序合并, 代价也是最小的. 也因此SortShuffleManager现在是Spark1.1版本以后的默认配置项;
+
+另外我们经常在各种交流说到,做了什么Shuffle优化, 从上面我们看到, Shuffle针对特定的应用有很大的优化的空间,比如基于内存的Shuffle等;懂了ShuffleManager,以后听
+那些交流以后, 也就不会觉得人家多么高大不可攀了,嘿嘿,因为具体的优化接口Spark都是提供的,只是针对特定应用做了自己的实现而已;
 
