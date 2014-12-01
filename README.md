@@ -20,6 +20,13 @@
 +   开始埋坑日期：2014-11-24
 +   坑状态：done
 
+###[关于Scala的implicit(隐式转换)的思考](./spark/scala-implicit.md)
+Scala的隐式转换是一个很重要的语法糖,在Spark中也做了很多应用,其中最大的应用就是在RDD类型上提供了reduceByKey,groupByKey等函数接口, 如果不能对隐式
+转换很好的理解, 基本上都无法理解为什么在RDD中不存在这类函数的基础上可以执行这类函数.文章内部做了解释, 同时针对隐式转换做了一些总结和思考
+
++   开始埋坑日期：2014-12-01
++   坑状态：done
+
 ### [Spark-Block管理](./spark/spark-block-manager.md)
 在Spark里面，block的管理基本贯穿了整个计算模型，从cache的管理，shuffle的输出等等，都和block密切相关。这里挖一坑。
 
