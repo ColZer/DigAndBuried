@@ -3,6 +3,16 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### [MLLib Pipeline的实现分析](./spark/mllib-pipeline.md)
+Spark中的Mllib一直朝着可实践性的方法前进着, 而Pipeline是这个过程中一个很重要的功能. 在2014年11月,孟祥瑞在Spark MLLib代码中CI了一个全新的package:"org.apache.spark.ml", 
+和传统的"org.apache.spark.mllib"独立, 这个包即Spark MLLib即Pipeline and Parameters功能. 到目前为止,这个package只有三次ci, 代码量也较少,但是基本上可以清楚看清楚pipeline的
+逻辑,这里开第一个mllib的坑, 开始对mllib进行深入学习. 
+
++   开始埋坑日期：2014-12-10
++   期望完成日期：2014-12-20
++   坑状态：doing
+
+
 ### [Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)
 包括mapreduce和spark在内的所有离线计算工具，shuffle操作永远是设计最为笨重的，也是整体计算性能的瓶颈。主要原因是shuffle操作是不可避免的，
 而且它涉及到大量的本地IO，网络IO，甚至会占用大量的内存，CPU来做sort-based shuffle相关的操作。
