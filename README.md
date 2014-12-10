@@ -5,8 +5,8 @@
 
 ### [MLLib Pipeline的实现分析](./spark/mllib-pipeline.md)
 Spark中的Mllib一直朝着可实践性的方法前进着, 而Pipeline是这个过程中一个很重要的功能. 在2014年11月,孟祥瑞在Spark MLLib代码中CI了一个全新的package:"org.apache.spark.ml", 
-和传统的"org.apache.spark.mllib"独立, 这个包即Spark MLLib即Pipeline and Parameters功能. 到目前为止,这个package只有三次ci, 代码量也较少,但是基本上可以清楚看清楚pipeline的
-逻辑,这里开第一个mllib的坑, 开始对mllib进行深入学习. 
+和传统的"org.apache.spark.mllib"独立, 这个包即Spark MLLib的Pipeline and Parameters功能. 到目前为止,这个package只有三次ci, 代码量也较少,但是基本上可以清楚看到pipeline逻辑,
+这里开第一个mllib的坑, 开始对mllib进行深入学习. 
 
 +   开始埋坑日期：2014-12-10
 +   期望完成日期：2014-12-20
