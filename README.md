@@ -9,8 +9,7 @@ Spark中的Mllib一直朝着可实践性的方法前进着, 而Pipeline是这个
 这里开第一个mllib的坑, 开始对mllib进行深入学习. 
 
 +   开始埋坑日期：2014-12-10
-+   期望完成日期：2014-12-20
-+   坑状态：doing
++   坑状态：done
 
 
 ### [Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)
