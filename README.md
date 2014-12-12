@@ -4,9 +4,10 @@
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
 ### [Pregel原理分析与Bagel实现](./spark/pregel-bagel.md)
-[pregel 2010年](http://people.apache.org/~edwardyoon/documents/pregel.pdf)就已经出来了, [bagel](https://spark.apache.org/docs/latest/bagel-programming-guide.html)也2011年
-就已经在spark项目中开源, 并且在最近的graphX项目中声明不再对bagel进行支持, 使用graphX的"高级API"进行取代, 种种迹象好像说明pregel这门技术已经走向"末端", 其实个人的观点倒不是这样的; 
-最近因为项目的需要去调研了一下图计算框架,当看到pregel的时候就有一种感叹原来"密密麻麻"的图计算可以被简化到这样. 虽然后面项目应该是用graphx来做,但是还是想对pregel做一个总结.
+[Pregel](http://people.apache.org/~edwardyoon/documents/pregel.pdf) 2010年就已经出来了, [Bagel](https://spark.apache.org/docs/latest/bagel-programming-guide.html)也2011年
+就已经在spark项目中开源, 并且在最近的graphX项目中申明不再对Bagel进行支持, 使用GraphX的"高级API"进行取代, 种种迹象好像说明Pregel这门技术已经走向"末端", 其实个人的观点倒不是这样的; 
+
+最近因为项目的需要去调研了一下图计算框架,当看到Pregel的时候就有一种感叹原来"密密麻麻"的图计算可以被简化到这样. 虽然后面项目应该是用Graphx来做,但是还是想对Pregel做一个总结.
 
 +   开始埋坑日期：2014-12-12
 +   期望完成日期：2014-12-17
