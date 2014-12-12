@@ -3,6 +3,15 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### [Pregel原理分析与Bagel实现](./spark/pregel-bagel.md)
+[pregel 2010年](http://people.apache.org/~edwardyoon/documents/pregel.pdf)就已经出来了, [bagel](https://spark.apache.org/docs/latest/bagel-programming-guide.html)也2011年
+就已经在spark项目中开源, 并且在最近的graphX项目中声明不再对bagel进行支持, 使用graphX的"高级API"进行取代, 种种迹象好像说明pregel这门技术已经走向"末端", 其实个人的观点倒不是这样的; 
+最近因为项目的需要去调研了一下图计算框架,当看到pregel的时候就有一种感叹原来"密密麻麻"的图计算可以被简化到这样. 虽然后面项目应该是用graphx来做,但是还是想对pregel做一个总结.
+
++   开始埋坑日期：2014-12-12
++   期望完成日期：2014-12-17
++   坑状态：doing
+
 ### [MLLib Pipeline的实现分析](./spark/mllib-pipeline.md)
 Spark中的Mllib一直朝着可实践性的方法前进着, 而Pipeline是这个过程中一个很重要的功能. 在2014年11月,孟祥瑞在Spark MLLib代码中CI了一个全新的package:"org.apache.spark.ml", 
 和传统的"org.apache.spark.mllib"独立, 这个包即Spark MLLib的Pipeline and Parameters功能. 到目前为止,这个package只有三次ci, 代码量也较少,但是基本上可以清楚看到pipeline逻辑,
@@ -10,7 +19,6 @@ Spark中的Mllib一直朝着可实践性的方法前进着, 而Pipeline是这个
 
 +   开始埋坑日期：2014-12-10
 +   坑状态：done
-
 
 ### [Spark基础以及Shuffle实现分析](./spark/shuffle-study.md)
 包括mapreduce和spark在内的所有离线计算工具，shuffle操作永远是设计最为笨重的，也是整体计算性能的瓶颈。主要原因是shuffle操作是不可避免的，
