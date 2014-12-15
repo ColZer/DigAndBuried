@@ -10,8 +10,7 @@
 最近因为项目的需要去调研了一下图计算框架,当看到Pregel的时候就有一种感叹原来"密密麻麻"的图计算可以被简化到这样. 虽然后面项目应该是用Graphx来做,但是还是想对Pregel做一个总结.
 
 +   开始埋坑日期：2014-12-12
-+   期望完成日期：2014-12-17
-+   坑状态：doing
++   坑状态：done
 
 ### [MLLib Pipeline的实现分析](./spark/mllib-pipeline.md)
 Spark中的Mllib一直朝着可实践性的方法前进着, 而Pipeline是这个过程中一个很重要的功能. 在2014年11月,孟祥瑞在Spark MLLib代码中CI了一个全新的package:"org.apache.spark.ml", 
