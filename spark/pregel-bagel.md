@@ -148,4 +148,120 @@ OK!上面基本上解析了Pregel的原理, 还有一些概念没有谈到, 比�
 下面我们来看具体的Bagel的实现.
 
 ###Bagel的实现
+Bagel是Pregel一个开源实现, 目前代码开源在Spark源码中, 不过Spark官方已经放弃对这块的支持, 优先使用GraphX来进行图计算. Bagel代码量很短, 才300行, 这里简单对代码进行过一遍, 
+核心是围绕上面谈到的概念进行解析.
+
+Pregel是站在顶点的角度来思考, 每个顶点是一个执行单元, 自身有一个状态 ,表示是否需要对该顶点进行计算
+    
+    trait Vertex {
+      def active: Boolean
+    }
+
+上面关于顶点状态描述较少, 这里补充一下, 顶点状态的变化. 上面我们谈到顶点状态可以在Computer函数中进行修改, 没错,但是如果一个节点被修改active=false, 不代表这个节点就不会进行后面计算了,
+一个处于active=false状态的节点,在后面接收到其他节点发送的消息时, 还是会处理;但是如果所有节点都没有发送任何消息并且所有都处于active=false状态, 这个时候整个计算就结束了,注意
+这里两个条件是"并且/AND", 都必须满足. 所以在Computer函数中, 如果没有消息可以发送出去了, 则一定要将自身的状态设置为false.
+
+上面对Vertex定义很简单, 而且在Bagel, 没有Edge这个类来定义边, 具体的边信息, 都是定义在Vertex中, 即直接定义它的出边信息. 同时也可以在Vertex定义其他元素, 来表示顶点的属性数据. 
+
+实例如下:
+
+    class PRVertex() extends Vertex with Serializable {
+      var value: Double = _
+      var outEdges: Array[String] = _
+      var active: Boolean = _
+    
+      def this(value: Double, outEdges: Array[String], active: Boolean = true) {
+        this()
+        this.value = value
+        this.outEdges = outEdges
+        this.active = active
+      }
+    }
+
+每个顶点都有一个rank值, 以及一组出边Array, 其中Array每个元素为出边所对应的顶点的名称. 那下面问题来了, 顶点集在Bagel是怎么表示的?答案是RDD,如下所示的顶点集:
+
+     vertices: RDD[(K, V)] 
+
+其中K为顶点的标示符号, 应该来说, 它应该唯一. V就为上面的Vertex子类, 存储了每个顶点的属性值, 状态信息和出边信息.     
+
+第二个重要的类就是消息类:Message. 在Bagel/Pregel, 必须明确的指定每个消息所发送的目标顶点, 至于消息中其他的值根据业务需求可以添加, 实例如下:
+    
+    trait Message[K] {
+      def targetId: K
+    }
+    class PRMessage() extends Message[String] with Serializable {
+      var targetId: String = _
+      var value: Double = _
+    
+      def this(targetId: String, value: Double) {
+        this()
+        this.targetId = targetId
+        this.value = value
+      }
+    }
+
+在Bagel运行过程中, 每个顶点都对应了一个消息迭代器, 因此在也是一个RDD:
+
+    messages: RDD[(K, M)],
+
+其中K为指定的顶点的标示符号, 而M为上面具体消息类型; 在每个superstep计算过程中,  Bagel首先对上一步骤生成的所有的消息进行combiners操作, 在当前操作结束以后, 利用当前的每个Computer函数
+计算的结果生成一个新的messages: RDD[(K, M)]对象.
+
+    def run[K: Manifest, V <: Vertex, M <: Message[K], C: Manifest, A: Manifest](
+        sc: SparkContext, vertices: RDD[(K, V)],
+        messages: RDD[(K, M)],combiner: Combiner[M, C],
+        aggregator: Option[Aggregator[V, A]] )(
+        compute: (V, Option[C], Option[A], Int) => (V, Array[M])
+      ): RDD[(K, V)] = {
+          
+        var superstep = 0
+        var verts = vertices
+        var msgs = messages
+        var noActivity = false
+        var lastRDD: RDD[(K, (V, Array[M]))] = null
+        do {    
+          val aggregated = agg(verts, aggregator)
+          val combinedMsgs = msgs.combineByKey(
+            combiner.createCombiner _, combiner.mergeMsg _, combiner.mergeCombiners _, partitioner)
+          val grouped = combinedMsgs.groupWith(verts)
+          val superstep_ = superstep  
+          val (processed, numMsgs, numActiveVerts) =
+            comp[K, V, M, C](sc, grouped, compute(_, _, aggregated, superstep_), storageLevel)
+          if (lastRDD != null) {
+            lastRDD.unpersist(false)
+          }
+          lastRDD = processed
+    
+          verts = processed.mapValues { case (vert, msgs) => vert }
+          msgs = processed.flatMap {
+            case (id, (vert, msgs)) => msgs.map(m => (m.targetId, m))
+          }
+          superstep += 1
+    
+          noActivity = numMsgs == 0 && numActiveVerts == 0
+        } while (!noActivity)
+    
+        verts
+      }
+
+上面为bagel程序的主入口, 接受节点RDD, 一个初始化空的消息RDD,  一个combiner和aggregator, 同时接受用户的针对每个节点的compute计算函数. 从逻辑上,我们可以看到, Bagel是不能对
+图的结构进行修改, 但是可以在computer函数内部中做local图修改, 加边和删除边, 或者删除自身(即标示自己为dead, 不再处理新接受的消息).
+
+结构上来说, 
+
++   利用aggregator, 对节点RDD做reduce操作
++   利用combiner, 对消息做combiner操作, 并按照顶点进行分组, 从而可以把指定顶点的消息传递给每个computer函数
++   调用每个顶点的compute函数, compute将会返回计算以后节点新的数据和发送的所有消息
++   判断是否需要继续superstep, 具体的逻辑参考上面谈到的顶点状态描述
+
+----------------
+分析不下去了,说实话了, Bagel的逻辑很清晰,很简单, 就不继续写了, 简单浏览一下就清楚具体的实现原理了!!!
+
+
+总结: Pregel是站在顶点的角度来思考图的计算, 通过顶点之间的消息传递来诠释边的概念, 在传递最短路径, pageRank这类问题有天然优越性. 具体可以参考Spark中实例代码. 不过目前GraphX中
+包含了更多的高级API, 方便以及社区的持续支持, 所以一般情况下, 优先是采用Graphx进行业务开发,后面将会对GraphX做一次总结.
+
+@End
+
+
 
