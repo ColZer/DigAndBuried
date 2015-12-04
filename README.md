@@ -3,6 +3,14 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### 系统进程性能分析
+好久没有埋坑了，最近突然想把系统性能以及问题跟踪相关的原理和工具稍微整理，基本都是日常开发和运维不可缺少的东西，包括[《进程分析之内存》](./system/memory.md)，[《进程分析之JAVA内存》](./system/java-memory.md)，[《进程分析之CPU》](./system/cpu.md)，[《进程分析之磁盘IO》](./system/disk-io.md)，[《进程分析之网络IO》](
+./system/disk-io.md)；
+
++   开始埋坑日期：2015-12-02
++   坑状态：done
+
+
 ### [Pregel原理分析与Bagel实现](./spark/pregel-bagel.md)
 [Pregel](http://people.apache.org/~edwardyoon/documents/pregel.pdf) 2010年就已经出来了, [Bagel](https://spark.apache.org/docs/latest/bagel-programming-guide.html)也2011年
 就已经在spark项目中开源, 并且在最近的graphX项目中申明不再对Bagel进行支持, 使用GraphX的"高级API"进行取代, 种种迹象好像说明Pregel这门技术已经走向"末端", 其实个人的观点倒不是这样的; 
