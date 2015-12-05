@@ -114,12 +114,14 @@ cpu物理/逻辑信息数据都可以从/proc/cpuinfo中可以获取，下面将
 >
 > ps的-f参数解析：does full-format listing.  When used with -L, the NLWP (number of threads) and LWP (thread ID) columns will be added.
 > -f参数将会完整的显示进程信息，比如PPID（父进程ID），C（CPU使用率）等，如果-L配合，将会线程每个PID的轻量进程数目和每个轻量进程号
-> ps -efL |grep scribed-lighty
-    UID        PID  PPID   LWP  C NLWP STIME TTY          TIME CMD
-    work     20811     1 20811  5   86 Nov13 ?        1-01:37:21 ./scribed-lighty
-    work     20811     1 21074  0   86 Nov13 ?        00:00:00 ./scribed-lighty
-    work     20811     1 21075  0   86 Nov13 ?        00:00:00 ./scribed-lighty
-    work     20811     1 21076  0   86 Nov13 ?        00:52:47 ./scribed-lighty
+
+        ps -efL |grep scribed-lighty
+        UID        PID  PPID   LWP  C NLWP STIME TTY          TIME CMD
+        work     20811     1 20811  5   86 Nov13 ?        1-01:37:21 ./scribed-lighty
+        work     20811     1 21074  0   86 Nov13 ?        00:00:00 ./scribed-lighty
+        work     20811     1 21075  0   86 Nov13 ?        00:00:00 ./scribed-lighty
+        work     20811     1 21076  0   86 Nov13 ?        00:52:47 ./scribed-lighty
+        
 >
 > 我们看到主进程20811，它的LWP=20811，CPU总计开销C=5%，轻量进程数目NLWP=86个；而LWP=21074，它的归属的进程PID=20811；
 >
