@@ -163,13 +163,13 @@ CPU的使用耗时根据用处不同，分为：
 
 在一个调度过程中，CPU总时间=user+nice+sys+iowait+idle+steal+irq+softirq+guest；对于一个进程来说只有user+nice+sys是这段时间内真正被用于CPU计算，TOP等程序也是利用这个值来计算进程占用的CPU比例；
 
-> 关于IOwait，“内核态CPU等待IO完成的CPU耗时”这句话对iowait的理解还是很字面，后面分析IO会详细分析，这里简单字面进行分析；
+关于IOwait，“内核态CPU等待IO完成的CPU耗时”这句话对iowait的理解还是很字面，后面分析IO会详细分析，这里简单字面进行分析；
 >
 > 磁盘作为外部设备，它是有一定的IOPS和带宽/吞吐量的限制；如果在有大量的磁盘读写的时候，IO就出现的瓶颈，IO服务时间（包括IO等待）变长，此时如果系统空闲idle资源没有其他可运行进程进行调度，那么就相当于有一部分CPU资源在“等待”这部分IO进程，换句话说（iowait+idle的时间都是CPU空闲的时间，只是idle是真的空闲，iowait是有进程在等待io而浪费的CPU空闲时间）；
 >
 > IO压力和IOwait其实没有必然关系，因为它有一个条件就是当前“没有其他可运行进程进行调度”，在IO压力很大的时候，IOwait可能很小，对IO的分析参考下一节，比如通过iostat进行分析；
 
-> Irix/Solaris mode
+关于Irix/Solaris mode
 >
 > 使用TOP等命令来查看每个进程的CPU耗时情况有两种模式Irix或Solaris；其中Irix on下，它统计在单个CPU的时间片（A）下，进程的user+sys的耗时比例：（use+sys）/A；一个进程同时可能有多个线程在这个时间片下占用多个CPU，那么（use+sys）/A 是可以大于100%的；而Solaris模式下（Irix off）,A=A×CPU个数，从而获取进程占整个系统的CPU资源比例
 >
