@@ -4,11 +4,10 @@
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
 ### [系统进程性能分析](./system/java-memory.md)
-好久没有埋坑了，最近突然想把系统性能以及问题跟踪相关的原理和工具稍微整理，基本都是日常开发和运维不可缺少的东西，包括[《进程分析之内存》](./system/memory.md)，[《进程分析之JAVA内存》](./system/java-memory.md)，[《进程分析之CPU》](./system/cpu.md)，[《进程分析之磁盘IO》](./system/disk-io.md)，[《进程分析之网络IO》](
-./system/disk-io.md)；
+好久没有埋坑了，最近突然想把系统性能以及问题跟踪相关的原理和工具稍微整理，基本都是日常开发和运维不可缺少的东西，包括[《进程分析之内存》](./system/memory.md)，[《进程分析之JAVA内存》](./system/java-memory.md)，[《进程分析之CPU》](./system/cpu.md)，[《进程分析之磁盘IO》](./system/disk-io.md)，《进程分析之网络IO》；
 
 +   开始埋坑日期：2015-12-02
-+   坑状态：done
++   坑状态：doing
 
 
 ### [Pregel原理分析与Bagel实现](./spark/pregel-bagel.md)
