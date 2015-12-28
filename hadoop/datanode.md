@@ -11,7 +11,7 @@ Namespaces和BlockPool是NameNode和DataNode管理文件目录树/Block的单位
 
 DataNode通过BlockPool给NameNode提供了Block管理的功能，但是NameNode从不主动的去请求DataNode去做何种动作，而是DataNode针对每个BlockPool都维护一个与自己归属的NameNode之间心跳线程，定期的向NameNode汇报自身的状态，在NameNode返回的心跳值中会携带相关的Command命令信息，从而完成NameNode对DataNode控制。
 
-![Alt text](./image/BlockPoolManager.png)
+![Alt text](../image/BlockPoolManager.png)
 
 在DataNode中，对一组BlockPool的管理是通过BlockPoolManager这个类来提供的，在DataNode启动时，会初始化一个该对象，并从配置中读取该datanode需要服务的BlockPool，并针对每个BlockPool初始化一个BPOfferService，并与相应的NameNode完成注册以及心跳的维护。
 
@@ -61,7 +61,7 @@ NameNode对BPServiceActor的操作是通过心跳协议来返回的，其中主�
 
 另外，在HDFS上，虽然Block是贯穿在整个系统中，但是在DataNode上，用Replica副本这个概念来解释可能更好点。何为副本？在HDFS上，每一个Block都有单副本或者多副本，这些副本分布在所有DataNode上，由NameNode来维护它的存在，而DataNode来提供副本的存储和读写。
 
-![Alt text](./image/fsdataset.png)
+![Alt text](../image/fsdataset.png)
 
 FsDataset对象功能分为两个粒度，分别为对Pool和Replica的管理。
 - Pool层面的管理DataStorage：如上描述，针对每个BlockPool，DataNode都是独立维护一个Pool管理对象BlockPoolSliceStorage，比如DataNode第一次初始化时候，需要针对每个Pool创造pool根目录，DataNode的升级也需要BlockPoolSliceStorage的支持；
