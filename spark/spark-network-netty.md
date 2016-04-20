@@ -37,7 +37,7 @@ ManagedBuffer包含了三个函数createInputStream()，nioByteBuffer()，conver
 ### Protocol的表示
 协议是应用层通信的基础，它提供了应用层通信的数据表示，以及编码和解码的能力。在Spark Network Common中，继承AKKA中的定义，将协议命名为Message，它继承Encodable，提供了encode的能力。
 
-![Alt text](./image/network-message.jpg)
+![Alt text](../image/network-message.jpg)
 
 Message根据请求响应可以划分为RequestMessage和ResponseMessage两种；对于Response，根据处理结果，可以划分为Failure和Success两种类型；根据功能的不同，z主要划分为Stream，ChunkFetch，Rpc。
 
@@ -137,7 +137,7 @@ Server是通过监听一个端口，注入rpcHandler和streamManager从而对外
 
 那么TransportClient和TransportResponseHandler是怎么配合一起完成Client的工作呢？
 
-![Alt text](./image/network-client.jpg)
+![Alt text](../image/network-client.jpg)
 
 如上所示，由TransportClient将用户的RPC，ChunkFecth，Stream的请求进行打包并发送到Server端，同时将用户提供的回调函数注册到TransportResponseHandler，在上面一节中说过，TransportResponseHandler是TransportChannelHandler的一部分，在TransportChannelHandler接收到数据包，并判断为响应包以后，将包数据路由到TransportResponseHandler中，在TransportResponseHandler中通过注册的回调函数，将响应包的数据返回给客户端
 
@@ -263,7 +263,7 @@ RpcEndpointRef即为与相应Endpoint通信的引用，它对外暴露了send/as
 ### RpcEnv内部实现原理
 RpcEnv不仅从外部接口与Akka基本一致，在内部的实现上，也基本差不多，都是按照MailBox的设计思路来实现的；
 
-![Alt text](./image/network-rpcenv.jpg)
+![Alt text](../image/network-rpcenv.jpg)
 
 与上图所示，RpcEnv即充当着Server，同时也为Client内部实现。
 当As Server，RpcEnv会初始化一个Server，并注册NettyRpcHandler，在前面描述过，RpcHandler的receive接口负责对每一个请求进行处理，一般情况下，简单业务可以在RpcHandler直接完成请求的处理，但是考虑一个RpcEnv的Server上会挂载了很多个RpcEndpoint，每个RpcEndpoint的RPC请求频率不可控，因此需要对一定的分发机制和队列来维护这些请求，其中Dispatcher为分发器，InBox即为请求队列；
