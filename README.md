@@ -3,6 +3,12 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### [Spark Network 模块分析（基于Netty的实现）](./spark/spark-network-netty.md)
+一直以来，基于Akka实现的RPC通信框架是Spark引以为豪的主要特性，也是与Hadoop等分布式计算框架对比过程中一大亮点，但是时代和技术都在演化，从Spark1.3.1版本开始，为了解决大块数据（如Shuffle）的传输问题，Spark引入了Netty通信框架，到了1.6.0版本，Netty居然完成取代了Akka，承担Spark内部所有的RPC通信以及数据流传输。
+
++   开始埋坑日期:2016-4-1
++   坑状态:done
+
 ### [Hadoop DataNode分析](./hadoop/datanode.md)
 在HDFS集群中,DataNode直接提供了磁盘文件的管理，也是性能的最大的瓶颈之一，对DataNode的分析显得尤为重要。这次对DataNode串读了一下，对DataNode基本逻辑有一定的了解
 
