@@ -3,6 +3,13 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### [Spark Memory解析](./spark/spark-memory-manager.md)
+在Spark日常工作中（特别是处理大数据），内存算是最常见问题。看着日志里打着各种FullGC甚至OutOfMemory日志，但是却不能理解是在哪一块出了内存问题。其实也这是正常的，Spark内存管理某种程度上还是相当复杂了，涉及RDD-Cache，Shuffle，Off-Heap等逻辑，它贯穿在整个任务执行的每个环节中。
+
++   开始埋坑日期:2016-5-1
++   坑状态:done
+
+
 ### [Spark Network 模块分析（基于Netty的实现）](./spark/spark-network-netty.md)
 一直以来，基于Akka实现的RPC通信框架是Spark引以为豪的主要特性，也是与Hadoop等分布式计算框架对比过程中一大亮点，但是时代和技术都在演化，从Spark1.3.1版本开始，为了解决大块数据（如Shuffle）的传输问题，Spark引入了Netty通信框架，到了1.6.0版本，Netty居然完成取代了Akka，承担Spark内部所有的RPC通信以及数据流传输。
 
