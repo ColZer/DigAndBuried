@@ -3,6 +3,14 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### [Spark Catalyst的实现分析](./spark/spark-catalyst.md)
+Spark SQL是Spark内部最核心以及社区最为活跃的组件，也是未来Spark对End-User最好的接口，支持SQL语句和类RDD的Dataset/DataFrame接口。相比在传统的RDD上进行开发，Spark SQL的业务逻辑在执行前和执行过程中都有相应的优化工具对其进行自动优化(即Spark Catalyst以及Tungsten两个组件)，因此未来Spark SQL肯定是主流。本文主要是针对SparkSQL核心组件Catalyst进行分析,算是SparkSQL实习分析的第一步吧
+
++   开始埋坑日期:2016-7-1
++   坑状态:done
+
+
+
 ### [Spark Memory解析](./spark/spark-memory-manager.md)
 在Spark日常工作中（特别是处理大数据），内存算是最常见问题。看着日志里打着各种FullGC甚至OutOfMemory日志，但是却不能理解是在哪一块出了内存问题。其实也这是正常的，Spark内存管理某种程度上还是相当复杂了，涉及RDD-Cache，Shuffle，Off-Heap等逻辑，它贯穿在整个任务执行的每个环节中。
 
