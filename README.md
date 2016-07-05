@@ -10,7 +10,6 @@ Spark SQL是Spark内部最核心以及社区最为活跃的组件，也是未来
 +   坑状态:done
 
 
-
 ### [Spark Memory解析](./spark/spark-memory-manager.md)
 在Spark日常工作中（特别是处理大数据），内存算是最常见问题。看着日志里打着各种FullGC甚至OutOfMemory日志，但是却不能理解是在哪一块出了内存问题。其实也这是正常的，Spark内存管理某种程度上还是相当复杂了，涉及RDD-Cache，Shuffle，Off-Heap等逻辑，它贯穿在整个任务执行的每个环节中。
 

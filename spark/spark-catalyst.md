@@ -72,14 +72,15 @@ Dataset核心概念是为`Encoder`，它就是我们上面说隐式转换的幕�
 
 
 对Package下的Expression进行一个大体的归类，如下所示：
-| Name      |归类|    功能描述 |
-| :-------- |---| --------|
-| 数据输入：  ||Expression为Tree结构，中间节点都为加工类型表单，而叶子节点即为数据产生节点|
-|Attribute||Catalyst里面最为重要的概念，可以理解为表的属性，在sql处理各个阶段会有不同的形态，比如UnresolvedAttribute->AttributeReference->BoundReference，后面会具体分析|
-|Literal||常量，支持各种类型的常量输入|
-|datetimeExpressions||返回当前时间类型的常量，`CurrentDate`,`CurrentTimestamp`|
-|randomExpressions||支持生成一些随机数|
-|其他一些输入||比如获取sql计算过程中的任务对应的InputFileName，SparkPartitionID|
+
+ Name      |归类|    功能描述
+-------- |---| --------
+数据输入：  | |Expression为Tree结构，中间节点都为加工类型表单，而叶子节点即为数据产生节点
+|Attribute| |Catalyst里面最为重要的概念，可以理解为表的属性，在sql处理各个阶段会有不同的形态，比如UnresolvedAttribute->AttributeReference->BoundReference，后面会具体分析|
+|Literal| |常量，支持各种类型的常量输入|
+|datetimeExpressions| |返回当前时间类型的常量，`CurrentDate`,`CurrentTimestamp`|
+|randomExpressions| |支持生成一些随机数|
+|其他一些输入| |比如获取sql计算过程中的任务对应的InputFileName，SparkPartitionID|
 | 基本计算功能：  |||
 | arithmetic |nullSafeEval |数学Expression，支持`-`,`+`,`abs`, `+`,`-`,`*`,`/`,`%`,`max`,`min`,`pmod`数学运算符|
 |bitwiseExpressions|nullSafeEval|位运算数，支持IntegralType类型的`and`,`or`,`not`,`xor`位运算|
@@ -161,8 +162,8 @@ Expression功能是对输入Row进行加工，输出可能是Any数据类型。�
 
 在上面示意图中，我们看到`LogicalPlan`是由一些节点组成，在Spark SQL中，节点大体分为两种类型：Operator和Command。其中我们上面看到的`Filter`都可以理解为Operator，而我们在SQL Cli中执行`set a=b`以及`addjar a`,它们都是Command类型的Plan，当然相比由很多Operator组成的多级复杂Plan，Command组成的Plan可能是单节点而存在，要简单一些，下面我们对Operator做一些归类。
 
-| Name      |   功能描述 |
-| :-------- | --------|
+ Name      |   功能描述
+-------- | --------
 |`Project`(projectList: Seq[NamedExpression], child: LogicalPlan)|SELECT语句输出操作，其中projectList为输出对象，每一个都为一个Expression，它们可能是Star，或者很复杂的Expression|
 |`Filter`(condition: Expression, child: LogicalPlan)|根据condition来对Child输入的Rows进行过滤|
 |`Join`(left: LogicalPlan,right: LogicalPlan,joinType: JoinType,condition: Option[Expression])|left和right的输出结果进行join操作|
