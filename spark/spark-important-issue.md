@@ -4,7 +4,9 @@
 
 1. 2016年02月 [SPARK-13529][BUILD] Move network/* modules into common/network-* 网络通信模块升级为Common项目
 2. 2015年03月 [SPARK-5124][Core] A standard RPC interface and an Akka implementation RPC提供插件式接口,并把Akka的裸用升级为其中的一个具体实现
+3. 2015年04月[SPARK-7003]Improve reliability of connection failure detection between Netty block transfer service endpoints连接超时,读写操作一直是混部集群中疼点,基于IdleStateHandler实现超时控制
 3. 2015年09月[SPARK-6028][Core]A new RPC implemetation based on the network module  基于network-common实现的RPC接口,即基于Netty的RPC接口
+5. 2015年11月[SPARK-11252][NETWORK] ShuffleClient should release connection after fetching blocks had been completed for external shuffle针对Idle连接进行关闭
 4. 2015年12月[SPARK-7995][SPARK-6280][CORE] Remove AkkaRpcEnv and remove systemName from setupEndpointRef 基于Akka的RPC告别历史舞台
 
 ###Spark-Core Shuffle的重构：

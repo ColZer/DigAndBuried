@@ -231,7 +231,101 @@ Catalyst在实现Tree的操作上，代码很是优雅的主要原因：它是�
 
 如上所言，`Rule`是通过反复的应用在一个节点，直到节点状态趋向稳定。但是如优化类型的`Rule`，很多时候，优化是没有止境了，优化的越深，优化开销就越大。因此我也需要一定的手段来控制`Batch`应用到何种程度，比如`Once extends Strategy`表示该`Batch`只允许应用一次；而`FixedPoint extends Strategy`表示该`Batch`最多只允许应用N次，当然如果`batch`在运行过程中，节点已经`稳定`，会立即退出尝试的。
 
-Spark SQL对Plan Tree或者内部Expression Tree的遍历分为几个阶段：对AST进行Parse操作，生成UnresolvePlan；对UnresolvePlan进行Analy(包括Resolve)操作，生成Logical Plan；对Logical Plan进行Optimize操作，生成Optimized LogicalPlan；以及最后进行Planning操作，生成PhysicalPlan。这里面的每一阶段都可以简述为应用一组BatchRule来对plan进行加工，但是里面每一个Rule都是很值得去细节学习和分析的，实话，我也没有一个一个去看！！！
+Spark SQL对Plan Tree或者内部Expression Tree的遍历分为几个阶段：对AST进行Parse操作，生成Unresolve Plan；对Unresolve Plan进行Analy(包括Resolve)操作，生成Logical Plan；对Logical Plan进行Optimize操作，生成Optimized Logical Plan；以及最后进行Planning操作，生成Physical Plan。这里面的每一阶段都可以简述为应用一组BatchRule来对plan进行加工，但是里面每一个Rule都是很值得去细节学习和分析的，实话，我也没有一个一个去看！！！
 
 > 本文主要是针对catalyst内部实现做了一些简洁的分析，注重分析与catalyst相关的三个概念`Row，Expression，Plan`，因为对三个概念的理解与否，将决定是否可以看懂spark sql后面相关细节。
 > 同时，Spark SQL真的很复杂，如果想真的完全理解Spark SQL内部的具体细节，这条路还是很长！fighting！
+
+
+##附录一：Optimizer
+
+Optimizer为Spark Catalyst工作最后阶段了，后面的生成Physical Plan，主要是由Spark SQL来完成。Optimizer主要会对Logical Plan进行剪枝，合并等操作，从而从Logical Plan中删除掉一些无用计算，或对一些计算的多个步骤进行合并，下面我们将会对一些常见（实际是“比较简单”）的优化Rule进行足以分析。由于优化的策略会随着知识的发现而逐渐引入，核心还是要理解原理！！
+
+> 下面实例中的`a,b`为表`t`的两个字段:`CREATE TABLE `t`(`a` int, `b` int, `c` int)`
+>
+> 可以通过explain extended sql来了解我们sql 语句优化情况.
+
+- BooleanSimplification: 简化Boolean表达式，主要是针对Where语句中的And/Or组合逻辑进行优化。
+
+        主要包括三项工作，由于比较简单，就不贴完整的sql语句了：
+
+        Simplifies expressions whose answer can be determined without evaluating both sides.
+        实例：`true or a=b`-->`true`
+
+        Eliminates / extracts common factors. 如果`And/OR`左右表达式内部子表达式由交集，抽象出来。
+        实例：`(a=1 and b=2) or (a=1 and b>2);`-->`(a=1) and (b=2 || b>2)`
+
+         Merge same expressions如果`And/OR`左右表达式完全相等，就可以删除一个
+         实例：`a+b=1 and a+b=1`-->`a+b=1`
+
+         Removes `Not` operator.转换`Not`的逻辑
+         实例：`not(a>b)`-->`a<=b`
+
+- ColumnPruning：字段剪枝，即删除Child无用的的output字段
+
+        几种常见的case：
+
+        p @ Project(_, p2: Project)如果p2中有p不需要的字段，即可从p2中删除
+        实例：`select a from (select a,b from t)` --> `select a from (select a from t)`，在下面的`CollapseProject`会对这个表达式进行二次优化。
+
+        p @ Project(_, a: Aggregate)，原理同上，Aggregate只是一个Project的包装而已
+        实例：`select c from (select max(a) as c,max(b) as d from t)` --> `select c from (select max(a) as c from t)`，在下面的`CollapseProject`会对这个表达式进行二次优化。
+
+        a @ Aggregate(_, _, child)，a @ Aggregate(_, _, child) 原理同上
+
+        p @ Project(_, child)，if sameOutput(child.output, p.output)即child和p有相同的输出，就可以删除Project的封装
+        实例：`select b from (select b from t)` --> `select b from t`当然这个操作在下面的CollapseProject也会进行。
+
+- CollapseProject： Project合并，尝试对Project与子Project或子Aggregate进行合并。上面谈到的ColumnPruning，是针对Project包含，可以剔除子Project中无用的字段，但是是直接尝试进行合并。
+
+        主要是针对两种case：
+
+        p1 @ Project(_, p2: Project)，如果p1的表达式在p2是重叠的，并且重叠部分都是deterministic，那么就可以把p1和p2的表达式进行组合为一个新的Project
+        实例：`select c + 1 from (select a+b as c from t)` -->`select a+b+1 as c+1 from t`
+        你可以能会问题，那么p1的表达式在p2是否可能不重叠？
+        如果p1中有，但是p2中没有！抱歉，语法错误。
+        比如：`select c + 1,a from (select a+b as c from t)`-->`cannot resolve '`a`' given input columns`
+        如果p2中有，但是p1中不需要！会被ColumnPruning剪掉，不会存在。
+        比如：`select c + 1 from (select a+b as c,a from t)`-->`select a+b+1 as c+1 from t`
+
+        p @ Project(_, agg: Aggregate) 原理同上
+        实例：`select c+1 from (select max(a) as c from t)` --> `select max(a)+1 as c+1 from t`
+
+- CombineFilters：Filter操作合并
+
+        只有一种case，即将他们转换为AND合并
+        实例：`select a from (select a from t where a > 10) where a>20` --> `select a from t where a > 10 and a>20`
+        实例：`select a as c from (select a from t where a > 10)` --> `select a as c from t where a > 10`
+
+- CombineTypedFilters：对TypedFilter进行合并，与CombineFilters功能一致
+
+        即对两个TypedFilter的Func进行And组合：`combineFilterFunction(t2.func, t1.func)`
+
+- CollapseRepartition：Repartition操作合并
+
+        如果连续进行两次Repartition，是可以对他们操作进行合并的，而且以外层参数为主。
+        即`Repartition(numPartitions, shuffle, Repartition(_, _, child))`-->`Repartition(numPartitions, shuffle, child)`
+
+        其中Repartition操作只针对在DataFrame's上调用`coalesce` or `repartition`函数，而不是通过SQL来构造含有Repartition的Plan，sql中为`RepartitionByExpression`但是不适合这条规则。
+        比如：`select * from (select * from t  distribute by a) distribute by a`还是会产生两次RepartitionByExpression操作。
+        == Optimized Logical Plan ==
+        RepartitionByExpression [a#391]
+          +- RepartitionByExpression [a#391]
+           +- MetastoreRelation default, t
+
+
+- CombineLimits：Limit操作合并
+
+        针对GlobalLimit，LocalLimit，Limit，如果进行多次Limit，会选择最小的一次limit来合并他们
+        实例：`select * from (select * from t limit 10) limit 5` --> `select * from t limit 5`
+        实例：`select * from (select * from t limit 5) limit 10` --> `select * from t limit 5`
+
+- GetCurrentDatabase和ComputeCurrentTime：在优化阶段对`current_database(), current_date(), current_timestamp()`函数直接计算出值
+
+        实例：`select current_database()` --> `select "default" as current_database()`
+        实例：`select current_timestamp();` --> `select 1467996624588000 AS current_timestamp()`
+        1467996624588000 = 2016/7/9 0:50:22 哈哈，纪念一下！！
+
+
+
+
