@@ -326,6 +326,38 @@ Optimizer为Spark Catalyst工作最后阶段了，后面的生成Physical Plan�
         实例：`select current_timestamp();` --> `select 1467996624588000 AS current_timestamp()`
         1467996624588000 = 2016/7/9 0:50:22 哈哈，纪念一下！！
 
+- LimitPushDown Limit操作下移，可以减小Child操作返回不必要的字段条目
+
+		主要针对两种情况：
+		LocalLimit(exp, Union(children)) 将limit操作下移到每个union上面；
+		实例：`(select a from t where a>10 union all select b from t where b>20) limit 30` --> '(select a from t where a>10 limit 30 union all select b from t where b>20 limit 30) limit 30'
+		//注意这里的Union操作为`UNION ALL`，不支持默认的`UNION DISTINCT`
+
+		LocalLimit(exp, join @ Join(left, right, joinType, _))  根据Join操作的类型，将limit操作移下移到left或者right。
+
+- LikeSimplification：Like正则匹配进行简化，针对一些比较简单的正则表达式，比如前缀，后缀，包含，甚至相等，可以将Like操作转换为普通的字符串比较。
+
+		主要针对以下几种情况进行优化
+		如果Like表达式为前缀匹配类型"([^_%]+)%"，即转换为startWith字符串函数操作
+		实例：`select * from t where a like "2%"` --> `+- 'Filter 'a.startwith(2)`
+		//是内部转换，不存在StartWith对应的sql函数
+
+		同理，如果Like表达式是后缀匹配类型"%([^_%]+)"，或包含"%([^_%]+)%"，或相等"([^_%]*)"
+		可以转换为EndsWith，Contains，EqualTo等字符串比较。
+		如果同时为前缀和后缀，即“([^_%]+)%([^_%]+)”，即转换为EndsWith和StartWith进行And操作。
+
+
+- NullPropagation 对NULL常量参与表达式计算进行优化
+
+		与True/False一样，如果NULL常量参与计算，那么可以直接把结果设置为NULL，或者简化计算表达式。主要包含一下情况：
+		IsNull/IsNotNull/EqualNullSafe 针对NULL进行判断
+		GetArrayItem/GetMapValue/GetStructField/GetArrayStructFields在key为NULL或者整个Array/Map为NULL的时候，直接返回NULL。
+		Substring/StringRegexExpression/BinaryComparison/BinaryArithmetic/In 字符串数字进行操作，如果参数为NULL之类的，可以直接返回NULL。
+		Coalesce/AggregateExpression如果Child表达式有NULL，可以进行删除等操作
+
+
+
+
 
 
 
