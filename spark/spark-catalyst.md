@@ -261,6 +261,20 @@ Optimizer为Spark Catalyst工作最后阶段了，后面的生成Physical Plan�
          Removes `Not` operator.转换`Not`的逻辑
          实例：`not(a>b)`-->`a<=b`
 
+- SimplifyCasts 删除无用的case转换，即cast前后类型是一致的，是不需要进行cast转换操作的。
+
+		实例：`select cast(a as int) from t` --> `select a from t`
+		//a本身就是int类型
+
+- SimplifyCaseConversionExpressions 如果对字符串进行多次Upper/Lower操作，只需要保留最外层即可以
+
+		实例：`select lower(upper(lower(a))) as c from t;` --> `select lower(a) as c from t;`
+
+- SimplifyBinaryComparison 简化>=,<=,==等运算
+
+		对于两个表达式a，b，并且semanticEquals，
+		如果进行==，>=，<=，比较，那么可以简化为Ture；如果进行>，<比较，那么可以简化为Flase
+
 - ColumnPruning：字段剪枝，即删除Child无用的的output字段
 
         几种常见的case：
@@ -346,7 +360,6 @@ Optimizer为Spark Catalyst工作最后阶段了，后面的生成Physical Plan�
 		可以转换为EndsWith，Contains，EqualTo等字符串比较。
 		如果同时为前缀和后缀，即“([^_%]+)%([^_%]+)”，即转换为EndsWith和StartWith进行And操作。
 
-
 - NullPropagation 对NULL常量参与表达式计算进行优化
 
 		与True/False一样，如果NULL常量参与计算，那么可以直接把结果设置为NULL，或者简化计算表达式。主要包含一下情况：
@@ -355,9 +368,55 @@ Optimizer为Spark Catalyst工作最后阶段了，后面的生成Physical Plan�
 		Substring/StringRegexExpression/BinaryComparison/BinaryArithmetic/In 字符串数字进行操作，如果参数为NULL之类的，可以直接返回NULL。
 		Coalesce/AggregateExpression如果Child表达式有NULL，可以进行删除等操作
 
+- PruneFilters 对Filter表达式进行剪枝
 
+		前面的BooleanSimplification可以针对and/or表达式进行简化，但是那个规则是针对表达式，这里谈到的Filter是针对Filter操作，其中表达式不仅仅可以出现在Filter还可以出现在Project等位置。
 
+		其中包括以下几种情况
+		如果Filter逻辑判断整体结果为True，那么是可以删除这个Filter表达式
+		实例：`select * from t where true or a>10` --> `select * from t`
 
+		如果Filter逻辑判断整体结果为False或者NULL，可以把整个plan返回data设置为Seq.empty，Scheme保持不变。
+		实例：`select a from t where false` --> `LocalRelation <empty>, [a#655]`
 
+		对于f @ Filter(fc, p: LogicalPlan)，比如fc中判断条件在Child Plan的约束下，肯定为Ture，那么就可以移除这个Filter判断
+		实例：`select b from (select b from t where a/b>10 and b=2) where b=2` --> `select b from (select b from t where a/b>10 and b=2) `
 
+- SimplifyConditionals 简化IF语句逻辑
 
+		原理基本上和PruneFilters，BooleanSimplification一样，即删除无用的Case/IF语句
+		主要有以下几种情况：
+
+		对于If(predicate, trueValue, falseValue)，如果predicate为常量Ture/False/Null，是可以直接删除掉IF语句，在SQL语句上是没有IF这个函数的，只有Case语句，但是catalyst中有很多逻辑是会生成这个IF表达式。
+		 case If(TrueLiteral, trueValue, _) => trueValue
+	     case If(FalseLiteral, _, falseValue) => falseValue
+         case If(Literal(null, _), _, falseValue) => falseValue
+
+		对于CaseWhen(branches, _)，如果branches数组中第一个元素就为True，那么实际不需要进行后续case比较，直接选择第一个case的对应的结果就可以
+		实例：`select a, (case when true then "1" when false then "2" else "3" end) as c from t` -->
+		`select a, "1" as c from t`
+
+		对于CaseWhen(branches, _)，如果中间有when的值为False或者NULL常量，是可以直接删除掉这个表达式的。
+		实例：`select a, (case when b=2 then "1" when false then "2" else "3" end) as c from t` -->
+		`select a, (case when b=2 then "1" else "3" end) as c from t`
+		//`when false then "2"`会被直接简化掉。
+
+- ReplaceDistinctWithAggregate 用Aggregate来替换Distinct操作，换句话说Distinct操作不会出现在最终的Physical Plan中的
+
+		替换语句如下：
+		Distinct(child) => Aggregate(child.output, child.output, child)
+		实例：`select distinct a,b from t` --> `select a,b from t group by a,b`
+
+- ReplaceExceptWithAntiJoin 用AntiJoin操作来替换“except distinct”操作，注意不针对"except all"
+
+		distinct Except(left, right)操作的含义是从left中删除调right中存在的数据，以及自己当中存在重复的操作。
+		因此可以立刻时left和right做了一个AntiJoin，并且join是输出不相等，同时对结果做distinct操作。
+		实例：`select a,b from t where b=10 except DISTINCT select a,b from t` ->
+		`select distinct a,b from t where b=10 anti join (select a,b from t where a=10) t1 where t1.a != t.a and t1.b != t.b`
+
+- ReplaceIntersectWithSemiJoin 用LEFT SemiJoin操作来替换“Intersect distinct”操作，注意不针对"Intersect all"
+
+		实例: "select a,b from t  Intersect distinct select a,b from t where a=10" ->
+		`select distinct a,b from t where b=10 left semi join (select a,b from t where a=10) t1 where t1.a != t.a and t1.b != t.b`
+
+> 针对上面ReplaceExceptWithAntiJoin和ReplaceIntersectWithSemiJoin，都是只支持”distinct”，那么你可能会问，那么怎么支持"all"？答案是：**spark sql根本就不支持"Intersect all"和"except all"操作，哈哈！！**
