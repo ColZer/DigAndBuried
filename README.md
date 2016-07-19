@@ -3,6 +3,12 @@
 
 从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
 
+### [Spark 使用经验](./spark/spark-experience.md)
+在spark使用过程中,除了内存,网络一些大的主题引起大家注意以外还有很多细节,是可以多注意! 比如<正确的使用flatmap>,<reduceByKey一定比groupByKey好吗?>,后面回持续总结...
+
++   开始埋坑日期:2016-7-20
++   坑状态:doing
+
 ### [Spark-Catalyst Optimizer](./spark/spark-catalyst-optimizer.md)
 Optimizer主要会对Logical Plan进行剪枝，合并等操作，从而从Logical Plan中删除掉一些无用计算，或对一些计算的多个步骤进行合并。由于优化的策略会随着知识的发现而逐渐引入，核心还是要理解原理！！
 
