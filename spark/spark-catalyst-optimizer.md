@@ -1,6 +1,10 @@
 # Spark-Catalyst Optimizer
 
-Optimizer为Spark Catalyst工作最后阶段了，后面的生成Physical Plan，主要是由Spark SQL来完成。Optimizer主要会对Logical Plan进行剪枝，合并等操作，从而从Logical Plan中删除掉一些无用计算，或对一些计算的多个步骤进行合并，下面我们将会对一些主要的优化Rule进行逐条分析。由于优化的策略会随着知识的发现而逐渐引入，核心还是要理解原理！！
+Logical Plan Optimizer为Spark Catalyst工作最后阶段了，后面生成Physical Plan以及执行，主要是由Spark SQL来完成。Logical Plan Optimizer主要是对Logical Plan进行剪枝，合并等操作，进而删除掉一些无用计算，或对一些计算的多个步骤进行合并。
+
+关于Optimizer：优化包括RBO（Rule Based Optimizer）/CBO(Cost Based Optimizer)，其中这里基于Spark Catalyst是属于RBO，即基于一些经验规则（Rule）对Logical Plan的语法结构进行优化；在生成Physical Plan时候，还可以基于Cost代价做进一步的优化，比如多表join，优先选择小表进行join，以及根据数据大小，在HashJoin/SortMergeJoin/BroadcastJoin三者之间进行抉择。
+
+下面我们将会对一些主要的优化Rule进行逐条分析。由于优化的策略会随着知识的发现而逐渐引入，核心还是要理解原理！！
 
 > 下面实例中的`a,b`为表`t`的两个字段:`CREATE TABLE `t`(`a` int, `b` int, `c` int)`。
 > 可以通过explain extended sql来了解我们sql 语句优化情况.
