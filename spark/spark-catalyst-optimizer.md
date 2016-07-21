@@ -12,6 +12,7 @@ Logical Plan Optimizer为Spark Catalyst工作最后阶段了，后面生成Physi
 #### 1. BooleanSimplification: 简化Boolean表达式，主要是针对Where语句中的And/Or组合逻辑进行优化。
 
 主要包括三项工作，由于比较简单，就不贴完整的sql语句了：
+
 1. Simplifies expressions whose answer can be determined without evaluating both sides 简化不需要对两边都进行计算的Bool表达式。
 - 实例：`true or a=b`-->`true`
 
