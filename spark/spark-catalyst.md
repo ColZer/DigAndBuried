@@ -2,7 +2,7 @@
 
 Spark SQL是Spark内部最核心以及社区最为活跃的组件，也是未来Spark对End-User最好的接口，支持SQL语句和类RDD的Dataset/DataFrame接口。相比在传统的RDD上进行开发，Spark SQL的业务逻辑在执行前和执行过程中都有相应的优化工具对其进行自动优化(即Spark Catalyst以及Tungsten两个组件)，因此未来Spark SQL肯定是主流。
 
-在Spark SQL发展早期，其实我个人是很排斥Spark SQL，在我看来，裸用RDD，可以最大程度上满足我的`控制欲`，但是随着Spark的发展，也逐渐显示个人思维的短见（Spark是满足广大业务团队对数据分析的需求，最简单，最自动化优化的接口肯定是最易被人接受和吹捧的）；我排斥Spark SQL另外一个原因就是我Scala还不够精通，在以前版本中，Spark对SQL语句的解析并生成AST树，是使用Scala内部的`scala.util.parsing`来实现，那代码的苦涩难懂，是无法用语言来描述的，而且AST树是对SQL优化以及执行的过程理解的入口，因此只能望而却步了！在Spark 2.0以后，引入ANTLR来进行AST树的解析，让一切变都清晰，因此也就开始有了我下面的学习的工作了，丷丷！！
+在Spark SQL发展早期，其实我个人是很排斥Spark SQL，在我看来，裸用RDD，可以最大程度上满足我的`控制欲`，但是随着Spark的发展，也逐渐显示个人思维的短见（Spark是满足广大业务团队对数据分析的需求，最简单，最自动化优化的接口肯定是最易被人接受和吹捧的）；我排斥Spark SQL另外一个原因就是我Scala还不够精通，在以前版本中，Spark对SQL语句的解析并生成AST树，是使用Scala内部的`scala.util.parsing`来实现，那代码的苦涩难懂，是无法用语言来描述的，而且AST树是对SQL优化以及执行的过程理解的入口，因此只能望而却步了！在Spark 2.0以后，引入ANTLR来进行AST树的解析，让一切变都清晰!
 
 Spark SQL和Catalyst分别对应了SQL执行期以及解析期的优化工作，因此Catalyst的理解是Spark SQL的第一步。在一些Catalyst的介绍以及讲座中，下面一张图是必出现，它描述了从SQL语句到最后执行Plan的生成过程中，除了Spark SQL，其他SQL引擎的工作原理也基本一致，比如Hive之类的。
 
