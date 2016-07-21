@@ -13,14 +13,11 @@ Logical Plan Optimizer为Spark Catalyst工作最后阶段了，后面生成Physi
 
 主要包括三项工作，由于比较简单，就不贴完整的sql语句了：
 
-1. Simplifies expressions whose answer can be determined without evaluating both sides 简化不需要对两边都进行计算的Bool表达式。
-- 实例：`true or a=b`-->`true`
+1. Simplifies expressions whose answer can be determined without evaluating both sides 简化不需要对两边都进行计算的Bool表达式。实例：`true or a=b`-->`true`
 
-2. Eliminates / extracts common factors. 对`And/OR`两边相同子表达式进行抽离，避免重复计算。
-- 实例：`(a=1 and b=2) or (a=1 and b>2);`-->`(a=1) and (b=2 || b>2)`
+2. Eliminates / extracts common factors. 对`And/OR`两边相同子表达式进行抽离，避免重复计算。实例：`(a=1 and b=2) or (a=1 and b>2);`-->`(a=1) and (b=2 || b>2)`
 
-3. Merge same expressions如果`And/OR`左右表达式完全相等，就可以删除一个。
-- 实例：`a+b=1 and a+b=1`-->`a+b=1`
+3. Merge same expressions如果`And/OR`左右表达式完全相等，就可以删除一个。实例：`a+b=1 and a+b=1`-->`a+b=1`
 
 4. Removes `Not` operator.转换`Not`的逻辑。实例：`not(a>b)`-->`a<=b`
 
