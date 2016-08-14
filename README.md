@@ -1,7 +1,11 @@
 填坑与埋坑
 ==========
 
-从事spark相关的工作快五个月了，但是一直没有去做相关的总结，没有总结就没有沉淀，今天在这里“开贴”，自己挖坑自己埋。
+### [Spark SQL Join原理分析](./spark/spark-join.md)
+过了一下Spark SQL对Join的支持,相对来说原理比较简单,这里简单记录一下!
+
++   开始埋坑日期:2016-8-14
++   坑状态:done
 
 ### [Spark 使用经验](./spark/spark-experience.md)
 在spark使用过程中,除了内存,网络一些大的主题引起大家注意以外还有很多细节,是可以多注意! 比如正确的使用flatmap!,reduceByKey一定比groupByKey好吗?,后面会持续总结...
