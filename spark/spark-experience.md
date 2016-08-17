@@ -52,3 +52,16 @@
 	//ShuffleWrite＝599M，耗时：14s，ShuffleFetchAndWrite＝599M，耗时：44s
 
     > 结论：map-side的aggregator效果明显，reduceByKey还是很有优势的，因此在实际业务环境下需要根据数据的特点来进行选择。
+
+## 3. 优先选择Spark SQL的Table Cache,而不使用RDD的cache功能
+
+在迭代的计算过程中,经常需要把中间结果cache到内存中,目前Spark SQL和Core都提供了cache机制,但是Spark SQL使用了`columnar`技术,即内存列存储,可以显著的减小cache对内存占用.
+
+    测试:
+    du -sh
+    284K	/Users/parquet
+    spark.read.parquet("/Users/parquet").cache  ==> 2副本cache,占用内存大小:1997.2 KB
+    spark.read.parquet("/Users/parquet").rdd.cache ==> 2副本cache,占用内存大小:14.2 MB
+    相差7倍!而且如果原始数据越大,这个差量比例应该会更大!
+
+所以如果实在要使用cache数据,优先将数据转换为dataset,再进行cache.
