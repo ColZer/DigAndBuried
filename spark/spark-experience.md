@@ -60,8 +60,8 @@
     测试:
     du -sh
     284K	/Users/parquet
-    spark.read.parquet("/Users/parquet").cache  ==> 2副本cache,占用内存大小:1997.2 KB
-    spark.read.parquet("/Users/parquet").rdd.cache ==> 2副本cache,占用内存大小:14.2 MB
+    spark.read.parquet("/Users/parquet").cache  ==> 单副本,占用内存大小:1997.2 KB
+    spark.read.parquet("/Users/parquet").rdd.cache ==> 单副本,占用内存大小:14.2 MB
     相差7倍!而且如果原始数据越大,这个差量比例应该会更大!
 
 所以如果实在要使用cache数据,优先将数据转换为dataset,再进行cache.
