@@ -65,3 +65,30 @@
     相差7倍!而且如果原始数据越大,这个差量比例应该会更大!
 
 所以如果实在要使用cache数据,优先将数据转换为dataset,再进行cache.
+
+
+## 4. 针对Parquet关闭_metadata和_common_meta_data
+
+在Spark中写parquet都会针对一个parquet目录增加两个_metadata和_common_meta_data文件,存储了整个目录下所有parquet文件的scheme聚合.
+它们是在parquet写commit过程中完成的,该聚合操作相当耗时,所以在2.0版本中默认进行关闭.参考[SPARK-15719]
+
+另外在spark 2.0(parquet 1.7)之前,如果写一个空的parquet文件到空的parquet目录,此时执行scheme聚合会有bug.
+
+    测试:
+    rm -rf /Users/parquet/*
+    assert(dataset.count == 0)
+    dataset.write.parquet("/User/Parquet")
+    报错:
+    java.lang.NullPointerException
+    at org.apache.parquet.hadoop.ParquetFileWriter.mergeFooters(ParquetFileWriter.java:456)
+    at org.apache.parquet.hadoop.ParquetFileWriter.writeMetadataFile(ParquetFileWriter.java:420)
+    at org.apache.parquet.hadoop.ParquetOutputCommitter.writeMetaDataFile(ParquetOutputCommitter.java:58)
+    //
+    List<Footer> footers = ParquetFileReader.readAllFootersInParallel(configuration, outputStatus);
+    //没有检查footer是否为空
+    //parquet 1.8已经修复 if(footers.isEmpty()) return
+    try {
+    ParquetFileWriter.writeMetadataFile(configuration, outputPath, footers);
+    } catch (Exception e) {
+
+关闭的方法: sc.hadoopConfiguration.setBoolean("parquet.enable.summary-metadata", false)
