@@ -1,7 +1,7 @@
 进程分析之CPU
 =================
 
-在[《进程分析之内存》](./system/memory.md)文中，对系统/进程的内存使用情况进行分析了，本文将从cpu使用情况对进程进行分析；在这之前，先针对cpu比较相关几个概念进行介绍
+在[《进程分析之内存》](./memory.md)文中，对系统/进程的内存使用情况进行分析了，本文将从cpu使用情况对进程进行分析；在这之前，先针对cpu比较相关几个概念进行介绍
 
 ## CPU INFO的阅读以及对基本概念的了解；
 
@@ -113,7 +113,7 @@ cpu物理/逻辑信息数据都可以从/proc/cpuinfo中可以获取，下面将
 > 方法二：ps -efL
 >
 > ps的-f参数解析：does full-format listing.  When used with -L, the NLWP (number of threads) and LWP (thread ID) columns will be added.
-> -f参数将会完整的显示进程信息，比如PPID（父进程ID），C（CPU使用率）等，如果-L配合，将会线程每个PID的轻量进程数目和每个轻量进程号
+> -f参数将会完整的显示进程信息，比如PPID（父进程ID），C（CPU使用率）等，如果-L配合，将会显示每个PID的轻量进程数目和每个轻量进程号
 
         ps -efL |grep scribed-lighty
         UID        PID  PPID   LWP  C NLWP STIME TTY          TIME CMD
@@ -138,7 +138,7 @@ cpu物理/逻辑信息数据都可以从/proc/cpuinfo中可以获取，下面将
 
 此时nice%，就是来度量这种因为改变优先级的进程的占用CPU用户态的比例，即0.5k/总的调度时间；而user%为1k/总的调度时间；那么进程A在一次调度过程占用的**用户态时间片**比例为(0.5k+ 1k)/总的调度时间；
 
-nice值为负数，优先级高了，可以多获取nice%的时间片；如果nice值为0或者为正值，进程被调度的优先级降低，此时nice%=0，但是在在总的调度时间不变的情况，优先级高的进程会多占时间皮，那么低优先级进程的user%就会减少；所以**整个系统用于用户态的CPU比例应该是所有进程的user%+nice%**
+nice值为负数，优先级高了，可以多获取nice%的时间片；如果nice值为0或者为正值，进程被调度的优先级降低，此时nice%=0，但是在在总的调度时间不变的情况，优先级高的进程会多占时间片，那么低优先级进程的user%就会减少；所以**整个系统用于用户态的CPU比例应该是所有进程的user%+nice%**
 
 进程的nice值是可以被修改的，修改命令分别是nice和renice。
 
